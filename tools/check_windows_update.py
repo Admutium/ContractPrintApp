@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import zipfile
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from updater import InstallLock, publish, read_update, stage_update
@@ -25,7 +26,7 @@ def stop_executables(path):
         env=env,check=True)
 
 
-def main(build):
+def main(build, previous=None):
     build=Path(build).resolve()
     with tempfile.TemporaryDirectory(prefix='ContractPrintApp-update-check-') as tmp:
         # Windows TEMP can use RUNNER~1 while Win32_Process reports the long
@@ -34,10 +35,23 @@ def main(build):
         install=root/'installed'/'ContractPrintApp'
         helper=root/'helper'
         candidate=root/'candidate'
-        for path in (install,helper,candidate):shutil.copytree(build,path)
+        old_build=build
+        if previous:
+            unpack=root/'previous'
+            with zipfile.ZipFile(previous) as z:
+                for name in z.namelist():
+                    if not (unpack/name).resolve().is_relative_to(unpack.resolve()):
+                        raise ValueError('Unsafe previous archive')
+                z.extractall(unpack)
+            old_build=unpack/'ContractPrintApp'
+        for path in (install,helper):shutil.copytree(old_build,path)
+        shutil.copytree(build,candidate)
         (install/'package-marker.txt').write_text('old')
         (candidate/'package-marker.txt').write_text('new')
-        (install/'userdata').mkdir();(install/'userdata'/'local.txt').write_text('keep me')
+        (install/'user-data').mkdir()
+        local_data=json.dumps({'firm_directory':[{'inn':'0'*10,'code':'DEMO','name':'Демонстрационная организация'}]})
+        (install/'user-data'/'settings.json').write_text(local_data,encoding='utf-8')
+        old_version=(install/'BUILD_INFO.txt').read_text(encoding='utf-8').splitlines()[0]
         version=(candidate/'BUILD_INFO.txt').read_text(encoding='utf-8').splitlines()[0].split()[-1]
         publish(candidate,root/'share',version)
         content=stage_update(read_update(root/'share','0.0.0'),install)
@@ -55,17 +69,17 @@ def main(build):
             lock.close()
             assert process.wait(timeout=150)==0,'Frozen helper failed'
             assert (install/'package-marker.txt').read_text()=='new'
-            assert (install/'userdata'/'local.txt').read_text()=='keep me'
+            assert (install/'user-data'/'settings.json').read_text(encoding='utf-8')==local_data
             report=json.loads((root/'self-test.json').read_text(encoding='utf-8'))
             assert report['status']=='ok',report
             backups=list(install.parent.glob('.ContractPrintApp-previous-*'))
             assert len(backups)==1
             assert (backups[0]/'package-marker.txt').read_text()=='old'
-            print('Windows frozen update: lock wait, replacement, EXE self-test, local data and backup verified.')
+            print(old_version+' -> '+version+': lock wait, replacement, EXE self-test, local data and backup verified.')
         finally:
             lock.close()
             stop_executables(root)
             if process and process.poll() is None:process.wait(timeout=10)
 
 
-if __name__=='__main__':main(sys.argv[1])
+if __name__=='__main__':main(sys.argv[1],sys.argv[2] if len(sys.argv)>2 else None)

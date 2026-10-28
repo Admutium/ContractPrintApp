@@ -1,10 +1,16 @@
-# ContractPrintApp 1.11.0
+# ContractPrintApp 1.11.1
 
 Приложение для создания карточки контракта, формирования PDF и печати.
 
-[Скачать готовую программу для Windows](https://github.com/Admutium/ContractPrintApp/releases/download/v1.11.0/ContractPrintApp-1.11.0-windows.zip)
+[Скачать готовую программу для Windows](https://github.com/Admutium/ContractPrintApp/releases/download/v1.11.1/ContractPrintApp-1.11.1-windows.zip)
 — распакуйте архив в отдельную папку и запустите `ContractPrintApp.exe`.
 Python для запуска готовой программы не требуется.
+
+[Комплект для проверки автообновления](https://github.com/Admutium/ContractPrintApp/releases/download/v1.11.1/ContractPrintApp-1.11.1-update-kit.zip)
+— распакуйте в отдельную папку обновлений, затем выберите её в настройках
+установленной программы. Подробности: `ОБНОВЛЕНИЯ_App.md`.
+
+[Значок ICO](https://github.com/Admutium/ContractPrintApp/releases/download/v1.11.1/ContractPrintApp.ico).
 
 При первом запуске справочник организаций пуст. Добавьте свои организации
 в «Настройки → Справочник организаций»: код, ИНН и название. После этого

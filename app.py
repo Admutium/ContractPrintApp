@@ -1,4 +1,4 @@
-"""ContractPrintApp 1.11.0 - desktop UI, no contract persistence."""
+"""ContractPrintApp 1.11.1 - desktop UI, no contract persistence."""
 import copy, json, os, sys, tempfile, threading, queue
 from pathlib import Path
 from datetime import datetime
@@ -18,7 +18,7 @@ DELIVERY_MODES=('От подписания до даты','Дней от под�
 
 class Application(UpdateUI,QuantityPanel,Editing,Workflow,Preview,Features):
     def __init__(self,root):
-        self.root=root;root.title('ContractPrintApp 1.11.0 · Карточка контракта');root.geometry(f'{min(1240,root.winfo_screenwidth()-40)}x{min(820,root.winfo_screenheight()-80)}');root.minsize(1100,650)
+        self.root=root;root.title('ContractPrintApp 1.11.1 · Карточка контракта');root.geometry(f'{min(1240,root.winfo_screenwidth()-40)}x{min(820,root.winfo_screenheight()-80)}');root.minsize(1100,650)
         self.contract=None;self.temp=None;self.pdf=None;self.outputs=None;self.page=0;self.zoom=1.;self.busy=False;self.events=queue.Queue()
         from app_paths import settings_path
         self.settings_path=settings_path()
@@ -581,6 +581,8 @@ class Application(UpdateUI,QuantityPanel,Editing,Workflow,Preview,Features):
         self.remember();self.clear_preview();self.root.destroy()
 
 def make_root():
+    from branding import set_taskbar_identity, set_window_icon
+    set_taskbar_identity()
     if sys.platform=='win32':
         try:
             import ctypes
@@ -588,8 +590,10 @@ def make_root():
         except Exception:pass
     try:
         from tkinterdnd2 import TkinterDnD
-        return TkinterDnD.Tk()
-    except ImportError:return tk.Tk()
+        root=TkinterDnD.Tk()
+    except ImportError:root=tk.Tk()
+    set_window_icon(root)
+    return root
 
 def self_test(output):
     """Small startup/PDF check with synthetic data in an isolated directory."""
@@ -601,6 +605,8 @@ def self_test(output):
         with tempfile.TemporaryDirectory(prefix='ContractPrintApp-check-') as tmp:
             app_paths.SETTINGS_OVERRIDE=Path(tmp)/'settings.json'
             root=make_root();app=Application(root)
+            if sys.platform=='win32' and not root.iconbitmap().lower().endswith('contractprintapp.ico'):
+                raise RuntimeError('Application window icon not configured')
             if app.firms:raise RuntimeError('Initial directory must be empty')
             demo_inn='0'*10
             app.firms={demo_inn:('DEMO','Демонстрационная организация')}
@@ -613,7 +619,7 @@ def self_test(output):
             from startup_check import wait_for_preview
             state=wait_for_preview(app)
             if len(app.pdf)!=2:raise RuntimeError('Unexpected PDF page count')
-            report={'status':'ok','preview_state':state,'checks':['empty_directory','local_supplier','window','pdf','preview','thumbnails']}
+            report={'status':'ok','preview_state':state,'checks':['application_icon','empty_directory','local_supplier','window','pdf','preview','thumbnails']}
             app.clear_preview();root.destroy();root=None
     except Exception as e:
         report={'status':'error','error':str(e),'traceback':traceback.format_exc()}

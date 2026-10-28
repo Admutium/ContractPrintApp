@@ -170,7 +170,7 @@ class EISRedirect(HTTPRedirectHandler):
 def fetch_notice(number):
     url=notice_url(number);start=time.monotonic()
     try:
-        with build_opener(EISRedirect()).open(Request(url,headers={'User-Agent':'ContractPrintApp/1.11.0','Accept':'text/html'}),timeout=15) as response:
+        with build_opener(EISRedirect()).open(Request(url,headers={'User-Agent':'ContractPrintApp/1.11.1','Accept':'text/html'}),timeout=15) as response:
             content_type=response.headers.get_content_type()
             if content_type not in ('text/html','application/xhtml+xml'):raise ValueError('ЕИС вернула документ другого типа. Загрузите HTML извещения вручную.')
             chunks=[];length=0

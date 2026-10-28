@@ -9,7 +9,7 @@ from dialogs import messagebox,filedialog,new_dialog,scroll_body
 from core import clean, money, extract_inn, normalized_label
 from eis import notice_url, fetch_notice, load_notice
 
-VERSION='1.11.0'
+VERSION='1.11.1'
 NOTICE_FIELDS=(('procurement_method','Способ закупки'),('nmck','НМЦК'),('smp','СМП / СОНКО · ч. 3 ст. 30'),('life','Жизнеобеспечение · ч. 9 ст. 37'),('etp','ЭТП'),('ikz','ИКЗ'))
 class Features:
     def supplier_selector(self):

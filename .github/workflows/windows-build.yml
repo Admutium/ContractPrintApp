@@ -17,6 +17,13 @@ jobs:
           architecture: x64
       - name: Build and verify Windows executable
         run: python build_windows_App.py
+      - name: Check upgrade from released 1.11.0
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://github.com/Admutium/ContractPrintApp/releases/download/v1.11.0/ContractPrintApp-1.11.0-windows.zip -OutFile previous.zip
+          if ((Get-FileHash previous.zip -Algorithm SHA256).Hash.ToLower() -ne 'de63b1d993133d0bb0e791cb7ed4f6f83d5987dd9a4bc77ae6d9bde97ecd99d0') { throw 'Previous release checksum mismatch' }
+          python tools/check_windows_update.py dist/ContractPrintApp previous.zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Keep Windows build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -29,14 +36,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          Compress-Archive -Path dist/ContractPrintApp -DestinationPath ContractPrintApp-1.11.0-windows.zip
+          Compress-Archive -Path dist/ContractPrintApp -DestinationPath ContractPrintApp-1.11.1-windows.zip
+          python updater.py dist/ContractPrintApp update-feed 1.11.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path update-feed/* -DestinationPath ContractPrintApp-1.11.1-update-kit.zip
           @'
-          ContractPrintApp 1.11.0
+          ContractPrintApp 1.11.1
 
-          Готовая программа для Windows: ContractPrintApp-1.11.0-windows.zip.
+          Новый значок EXE, ярлыков, окна и панели задач Windows.
+          Готовая программа для Windows: ContractPrintApp-1.11.1-windows.zip.
           Распакуйте в отдельную папку и запустите ContractPrintApp.exe. Python для запуска не требуется.
           Справочник организаций изначально пуст и заполняется пользователем.
           Настройки хранятся в user-data рядом с программой; сохраняйте эту папку при переносе.
-          Проверены шесть коротких сценариев и запуск готового EXE. Физическую печать проверьте на своём принтере.
+          Для проверки обновления с 1.11.0 скачайте ContractPrintApp-1.11.1-update-kit.zip.
+          Распакуйте два файла из него в отдельную папку обновлений на общем диске.
+          В установленной 1.11.0 выберите эту папку: Настройки → Папка обновлений.
+          Сохраните PDF и закройте остальные экземпляры перед установкой обновления.
+          Проверены семь коротких сценариев и запуск готового EXE. Физическую печать проверьте на своём принтере.
           '@ | Set-Content -Encoding utf8 release-notes.txt
-          gh release create v1.11.0 ContractPrintApp-1.11.0-windows.zip --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "ContractPrintApp 1.11.0" --notes-file release-notes.txt
+          gh release create v1.11.1 ContractPrintApp-1.11.1-windows.zip ContractPrintApp-1.11.1-update-kit.zip update-feed/ContractPrintApp-1.11.1-update.zip update-feed/update-ContractPrintApp.json assets/ContractPrintApp.ico --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "ContractPrintApp 1.11.1" --notes-file release-notes.txt

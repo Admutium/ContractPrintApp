@@ -233,7 +233,7 @@ def publish(folder, output, version):
         raise ValueError('Укажите папку готовой сборки dist/ContractPrintApp.')
     check_bundle_version(folder, version)
     output.mkdir(parents=True, exist_ok=True)
-    name = 'ContractPrintApp-' + version + '-windows.zip'
+    name = 'ContractPrintApp-' + version + '-update.zip'
     archive = output / name
     if archive.exists():raise FileExistsError('Эта версия уже опубликована. Используйте новый номер версии.')
     fd, tmp = tempfile.mkstemp(suffix='.zip', dir=output);os.close(fd)

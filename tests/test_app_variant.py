@@ -25,9 +25,18 @@ def demo_html():
 
 
 class AppVariantTests(unittest.TestCase):
+    def test_icon_assets(self):
+        from PIL import Image
+        from branding import ASSETS
+        with Image.open(ASSETS/'ContractPrintApp.ico') as icon:
+            self.assertTrue({(16,16),(32,32),(48,48),(256,256)} <= icon.ico.sizes())
+        with Image.open(ASSETS/'ContractPrintApp.png') as icon:
+            self.assertEqual(icon.mode,'RGBA')
+            self.assertEqual(icon.getpixel((0,0))[3],0)
+
     def test_empty_directory_and_version(self):
         self.assertEqual(FIRMS,{})
-        self.assertEqual(VERSION,'1.11.0')
+        self.assertEqual(VERSION,'1.11.1')
         app=SimpleNamespace(settings={})
         Features.init_features(app)
         self.assertEqual(app.firms,{})
