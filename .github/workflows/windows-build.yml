@@ -1,0 +1,42 @@
+name: Windows App build and release
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+env:
+  PYTHONUTF8: '1'
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Build and verify Windows executable
+        run: python build_windows_App.py
+      - name: Keep Windows build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ContractPrintApp-windows
+          path: dist/ContractPrintApp/
+          retention-days: 7
+          if-no-files-found: error
+      - name: Publish Windows release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Compress-Archive -Path dist/ContractPrintApp -DestinationPath ContractPrintApp-1.11.0-windows.zip
+          @'
+          ContractPrintApp 1.11.0
+
+          Готовая программа для Windows: ContractPrintApp-1.11.0-windows.zip.
+          Распакуйте в отдельную папку и запустите ContractPrintApp.exe. Python для запуска не требуется.
+          Справочник организаций изначально пуст и заполняется пользователем.
+          Настройки хранятся в user-data рядом с программой; сохраняйте эту папку при переносе.
+          Проверены шесть коротких сценариев и запуск готового EXE. Физическую печать проверьте на своём принтере.
+          '@ | Set-Content -Encoding utf8 release-notes.txt
+          gh release create v1.11.0 ContractPrintApp-1.11.0-windows.zip --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "ContractPrintApp 1.11.0" --notes-file release-notes.txt
