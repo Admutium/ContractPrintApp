@@ -605,8 +605,11 @@ def self_test(output):
         with tempfile.TemporaryDirectory(prefix='ContractPrintApp-check-') as tmp:
             app_paths.SETTINGS_OVERRIDE=Path(tmp)/'settings.json'
             root=make_root();app=Application(root)
-            if sys.platform=='win32' and not root.iconbitmap().lower().endswith('contractprintapp.ico'):
-                raise RuntimeError('Application window icon not configured')
+            root.update_idletasks()
+            from branding import window_icon_state
+            icon_state=window_icon_state(root)
+            if not all(icon_state.values()):
+                raise RuntimeError('Application icon check failed: '+str(icon_state))
             if app.firms:raise RuntimeError('Initial directory must be empty')
             demo_inn='0'*10
             app.firms={demo_inn:('DEMO','Демонстрационная организация')}
@@ -619,7 +622,7 @@ def self_test(output):
             from startup_check import wait_for_preview
             state=wait_for_preview(app)
             if len(app.pdf)!=2:raise RuntimeError('Unexpected PDF page count')
-            report={'status':'ok','preview_state':state,'checks':['application_icon','empty_directory','local_supplier','window','pdf','preview','thumbnails']}
+            report={'status':'ok','icon_state':icon_state,'preview_state':state,'checks':['application_icon','empty_directory','local_supplier','window','pdf','preview','thumbnails']}
             app.clear_preview();root.destroy();root=None
     except Exception as e:
         report={'status':'error','error':str(e),'traceback':traceback.format_exc()}
