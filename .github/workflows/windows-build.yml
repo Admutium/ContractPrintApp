@@ -17,6 +17,32 @@ jobs:
           architecture: x64
       - name: Build and verify Windows executable
         run: python build_windows_App.py
+      - name: Check ZIP on a mapped SMB share
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP ('App-SMB-' + [guid]::NewGuid())
+          $share = 'AppZip' + $PID
+          $created = $false
+          $mapped = $false
+          $wasStopped = (Get-Service LanmanServer).Status -eq 'Stopped'
+          try {
+            New-Item -ItemType Directory -Path $root | Out-Null
+            Start-Service LanmanServer
+            New-SmbShare -Name $share -Path $root -FullAccess "$env:USERDOMAIN\$env:USERNAME" | Out-Null
+            $created = $true
+            $letter = @('J','K','L','M') | Where-Object { -not (Test-Path "$($_):\") } | Select-Object -First 1
+            if (-not $letter) { throw 'No free drive letter for SMB test' }
+            net use "$($letter):" "\\localhost\$share" /persistent:no
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot map test SMB share' }
+            $mapped = $true
+            python tools/check_windows_zip.py "$($letter):\"
+            if ($LASTEXITCODE -ne 0) { throw 'Mapped SMB ZIP check failed' }
+          } finally {
+            if ($mapped) { net use "$($letter):" /delete /y }
+            if ($created) { Remove-SmbShare -Name $share -Force }
+            if ($wasStopped) { Stop-Service LanmanServer }
+            Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+          }
       - name: Check upgrade from released 1.11.0
         shell: pwsh
         run: |
@@ -36,22 +62,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          Compress-Archive -Path dist/ContractPrintApp -DestinationPath ContractPrintApp-1.11.1-windows.zip
-          python updater.py dist/ContractPrintApp update-feed 1.11.1
+          Compress-Archive -Path dist/ContractPrintApp -DestinationPath ContractPrintApp-1.12.0-windows.zip
+          python updater.py dist/ContractPrintApp update-feed 1.12.0
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Compress-Archive -Path update-feed/* -DestinationPath ContractPrintApp-1.11.1-update-kit.zip
+          Compress-Archive -Path update-feed/* -DestinationPath ContractPrintApp-1.12.0-update-kit.zip
           @'
-          ContractPrintApp 1.11.1
+          ContractPrintApp 1.12.0
 
-          Новый значок EXE, ярлыков, окна и панели задач Windows.
-          Готовая программа для Windows: ContractPrintApp-1.11.1-windows.zip.
+          Проверка и скачивание обновлений напрямую из GitHub без авторизации.
+          Прерванная загрузка продолжается при повторной проверке.
+          Обновлена обработка ZIP для Windows и сетевых дисков.
+          Готовая программа для Windows: ContractPrintApp-1.12.0-windows.zip.
           Распакуйте в отдельную папку и запустите ContractPrintApp.exe. Python для запуска не требуется.
           Справочник организаций изначально пуст и заполняется пользователем.
           Настройки хранятся в user-data рядом с программой; сохраняйте эту папку при переносе.
-          Для проверки обновления с 1.11.0 скачайте ContractPrintApp-1.11.1-update-kit.zip.
+          Для старых версий с ошибкой распаковки рекомендуется разовая ручная установка с сохранением user-data.
+          Для обновления через сетевую папку скачайте ContractPrintApp-1.12.0-update-kit.zip.
           Распакуйте два файла из него в отдельную папку обновлений на общем диске.
           В установленной 1.11.0 выберите эту папку: Настройки → Папка обновлений.
           Сохраните PDF и закройте остальные экземпляры перед установкой обновления.
-          Проверены семь коротких сценариев и запуск готового EXE. Физическую печать проверьте на своём принтере.
+          Проверены основные сценарии, GitHub-загрузка, ZIP на SMB-диске и запуск готового EXE.
           '@ | Set-Content -Encoding utf8 release-notes.txt
-          gh release create v1.11.1 ContractPrintApp-1.11.1-windows.zip ContractPrintApp-1.11.1-update-kit.zip update-feed/ContractPrintApp-1.11.1-update.zip update-feed/update-ContractPrintApp.json assets/ContractPrintApp.ico --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "ContractPrintApp 1.11.1" --notes-file release-notes.txt
+          gh release create v1.12.0 ContractPrintApp-1.12.0-windows.zip ContractPrintApp-1.12.0-update-kit.zip update-feed/ContractPrintApp-1.12.0-update.zip update-feed/update-ContractPrintApp.json assets/ContractPrintApp.ico --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "ContractPrintApp 1.12.0" --notes-file release-notes.txt

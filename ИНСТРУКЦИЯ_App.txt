@@ -1,4 +1,4 @@
-ContractPrintApp 1.11.1
+ContractPrintApp 1.12.0
 
 1. Распакуйте программу в отдельную папку ContractPrintApp с правом записи.
 2. Запустите ContractPrintApp.exe. Для сборки из исходников используйте

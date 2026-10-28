@@ -68,7 +68,7 @@ class UpdateTests(unittest.TestCase):
         self.assertFalse(list(self.root.glob('.ContractPrintApp-stage-*')))
 
     def test_malicious_archive_paths_and_source_archive_rejected(self):
-        for name in ('../escape', '/absolute', 'a\\escape', 'C:/escape', 'file. '):
+        for name in ('../escape', '/absolute', '..\\escape', 'C:/escape', 'file. '):
             with self.subTest(name=name):
                 archive = self.root / 'bad.zip'
                 with zipfile.ZipFile(archive, 'w') as z:z.writestr(name, b'bad')

@@ -1,4 +1,4 @@
-"""ContractPrintApp 1.11.1 - desktop UI, no contract persistence."""
+"""ContractPrintApp 1.12.0 - desktop UI, no contract persistence."""
 import copy, json, os, sys, tempfile, threading, queue
 from pathlib import Path
 from datetime import datetime
@@ -18,7 +18,7 @@ DELIVERY_MODES=('От подписания до даты','Дней от под�
 
 class Application(UpdateUI,QuantityPanel,Editing,Workflow,Preview,Features):
     def __init__(self,root):
-        self.root=root;root.title('ContractPrintApp 1.11.1 · Карточка контракта');root.geometry(f'{min(1240,root.winfo_screenwidth()-40)}x{min(820,root.winfo_screenheight()-80)}');root.minsize(1100,650)
+        self.root=root;root.title('ContractPrintApp 1.12.0 · Карточка контракта');root.geometry(f'{min(1240,root.winfo_screenwidth()-40)}x{min(820,root.winfo_screenheight()-80)}');root.minsize(1100,650)
         self.contract=None;self.temp=None;self.pdf=None;self.outputs=None;self.page=0;self.zoom=1.;self.busy=False;self.events=queue.Queue()
         from app_paths import settings_path
         self.settings_path=settings_path()

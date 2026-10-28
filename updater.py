@@ -67,22 +67,50 @@ def unpack_checked(archive, target):
     with zipfile.ZipFile(archive) as z:
         if sum(i.file_size for i in z.infolist()) > MAX_ARCHIVE * 3:
             raise ValueError('Слишком большой размер распакованного обновления.')
-        seen = set()
+        if len(z.infolist()) > 20000:
+            raise ValueError('Слишком много файлов в обновлении.')
+        entries=[]
         for item in z.infolist():
-            name = item.filename
+            # Windows ZIP tools can use backslashes; normalize before checking
+            # traversal, absolute paths and duplicate Windows filenames.
+            name = item.filename.replace('\\','/')
             p = PurePosixPath(name)
-            key = name.rstrip('/').casefold()
-            if (not name or '\\' in name or ':' in name or p.is_absolute()
-                    or '..' in p.parts or key in seen
-                    or stat.S_ISLNK(item.external_attr >> 16)
-                    or not (target / name).resolve().is_relative_to(target.resolve())):
-                raise ValueError('Небезопасный путь в ZIP обновления.')
+            if not p.parts or ':' in name or p.is_absolute() or '..' in p.parts or any(ord(c)<32 for c in name):
+                raise ValueError('Небезопасный путь в ZIP обновления: '+repr(item.filename[:180]))
+            if stat.S_ISLNK(item.external_attr >> 16):
+                raise ValueError('Ссылка в ZIP обновления запрещена: '+repr(item.filename[:180]))
             if any(part.endswith((' ', '.')) for part in p.parts):
                 raise ValueError('Недопустимое имя файла Windows в ZIP.')
-            if any(re.match(r'^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)', part, re.I) for part in p.parts):
+            if any(re.match(r'^(CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])(?:\.|$)', part, re.I) for part in p.parts):
                 raise ValueError('Зарезервированное имя файла Windows в ZIP.')
-            seen.add(key)
-        z.extractall(target)
+            entries.append((item,p,name.endswith('/')))
+        # Accept both the flat update package and an installer ZIP with one
+        # product directory. Do not accept source archives or arbitrary roots.
+        wrapped=bool(entries) and all(p.parts[0]=='ContractPrintApp' and (len(p.parts)>1 or isdir)
+                                     for _,p,isdir in entries)
+        seen={};members=[]
+        for item,p,isdir in entries:
+            parts=p.parts[1:] if wrapped else p.parts
+            if not parts:continue
+            key='/'.join(parts).casefold()
+            if key in seen or any(seen.get('/'.join(parts[:i]).casefold()) is False for i in range(1,len(parts))):
+                raise ValueError('Повторяющийся или конфликтующий путь в ZIP: '+repr(item.filename[:180]))
+            if not isdir and any(old.startswith(key+'/') for old in seen):
+                raise ValueError('Файл конфликтует с папкой в ZIP: '+repr(item.filename[:180]))
+            seen[key]=isdir;members.append((item,parts,isdir))
+        # A fresh directory and regular files only make confinement lexical.
+        # Resolving each not-yet-created child can yield inconsistent Windows
+        # UNC / mapped-drive prefixes. No archive-supplied links are allowed.
+        if target.is_symlink():raise ValueError('Папка распаковки не должна быть ссылкой.')
+        target.mkdir(parents=True,exist_ok=True)
+        if any(target.iterdir()):raise ValueError('Для обновления требуется пустая временная папка.')
+        for item,parts,isdir in members:
+            dest=target.joinpath(*parts)
+            dest.parent.mkdir(parents=True,exist_ok=True)
+            if isdir:dest.mkdir(exist_ok=True)
+            else:
+                with z.open(item) as source,dest.open('xb') as output:
+                    shutil.copyfileobj(source,output,1024*1024)
     if not (target / 'ContractPrintApp.exe').is_file() or not (target / '_internal').is_dir():
         raise ValueError('Нужен ZIP готовой Windows-сборки, а не исходников.')
 

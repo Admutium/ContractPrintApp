@@ -9,7 +9,7 @@ from dialogs import messagebox,filedialog,new_dialog,scroll_body
 from core import clean, money, extract_inn, normalized_label
 from eis import notice_url, fetch_notice, load_notice
 
-VERSION='1.11.1'
+VERSION='1.12.0'
 NOTICE_FIELDS=(('procurement_method','Способ закупки'),('nmck','НМЦК'),('smp','СМП / СОНКО · ч. 3 ст. 30'),('life','Жизнеобеспечение · ч. 9 ст. 37'),('etp','ЭТП'),('ikz','ИКЗ'))
 class Features:
     def supplier_selector(self):
@@ -24,6 +24,7 @@ class Features:
         settings=ttk.Menubutton(panel,text='Настройки ▾');settings.pack(side='left',padx=6)
         menu=tk.Menu(settings,tearoff=0);menu.add_command(label='Справочник организаций',command=self.directory_dialog)
         menu.add_separator()
+        menu.add_command(label='Обновления из GitHub (без входа)',command=self.github_update_settings)
         menu.add_command(label='Папка обновлений…',command=self.update_settings)
         menu.add_command(label='Проверить обновления',command=lambda:self.check_updates(manual=True))
         menu.add_command(label='Отключить проверку обновлений',command=self.disable_updates)
