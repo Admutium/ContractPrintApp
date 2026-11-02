@@ -4,6 +4,8 @@ from pathlib import Path
 import re
 import tempfile
 import time
+import socket
+import ssl
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, build_opener, HTTPRedirectHandler
@@ -13,6 +15,20 @@ from updater import MAX_ARCHIVE, InstallLock, digest, version_tuple
 REPOSITORY='Admutium/ContractPrintApp'
 API='https://api.github.com/repos/'+REPOSITORY+'/releases/latest'
 MANIFEST='update-ContractPrintApp.json'
+LATEST_MANIFEST='https://github.com/'+REPOSITORY+'/releases/latest/download/'+MANIFEST
+
+
+def connection_message(error,url):
+    reason=getattr(error,'reason',error)
+    host=urlparse(url).hostname or 'GitHub'
+    if isinstance(reason,ssl.SSLCertVerificationError):
+        detail='не пройдена проверка HTTPS-сертификата; проверьте дату Windows и настройки сертификатов / прокси'
+    elif isinstance(reason,socket.gaierror):detail='не удалось определить адрес сервера (DNS)'
+    elif isinstance(reason,(TimeoutError,socket.timeout)):detail='истекло время ожидания'
+    else:detail='сбой соединения ('+type(reason).__name__+')'
+    code=getattr(reason,'winerror',None) or getattr(reason,'errno',None)
+    if isinstance(code,int):detail+='; код '+str(code)
+    return 'Не удалось подключиться к '+host+': '+detail+'. Текущая версия продолжает работать.'
 
 
 def allowed_url(url):
@@ -49,7 +65,7 @@ def read_json(url,limit,opener):
         if e.code in (403,429):raise ValueError('GitHub временно ограничил запросы. Повторите проверку позже; вход в аккаунт не требуется.') from e
         raise ValueError('Не удалось получить обновление с GitHub (HTTP '+str(e.code)+').') from e
     except (URLError,TimeoutError,OSError) as e:
-        raise ValueError('Не удалось подключиться к GitHub. Текущая версия продолжает работать.') from e
+        raise ValueError(connection_message(e,url)) from e
 
 
 def asset_url(asset,tag):
@@ -62,6 +78,17 @@ def asset_url(asset,tag):
 
 
 def latest_update(current,opener=open_url):
+    # Prefer ordinary public release downloads: some networks cannot reach
+    # api.github.com even though github.com itself is available.
+    try:return latest_update_without_api(current,opener)
+    except ValueError as direct_error:
+        if not isinstance(direct_error.__cause__,(HTTPError,URLError,TimeoutError,OSError)) and not isinstance(direct_error,json.JSONDecodeError):raise
+        try:return latest_update_api(current,opener)
+        except ValueError as api_error:
+            raise ValueError('Проверка через GitHub и резервный API не удалась. '+str(direct_error)+' '+str(api_error)) from api_error
+
+
+def latest_update_api(current,opener=open_url):
     release=read_json(API,1024*1024,opener)
     tag=release.get('tag_name','')
     if not re.fullmatch(r'v\d+\.\d+\.\d+',tag):raise ValueError('Некорректный номер релиза GitHub.')
@@ -84,6 +111,33 @@ def latest_update(current,opener=open_url):
     if api_digest and api_digest.lower()!='sha256:'+info['sha256'].lower():
         raise ValueError('Контрольные суммы GitHub и пакета не совпадают.')
     return {**info,'url':asset_url(asset,tag),'size':size}
+
+
+def latest_update_without_api(current,opener=open_url):
+    info=read_json(LATEST_MANIFEST,65536,opener)
+    if info.get('product')!='ContractPrintApp':raise ValueError('Обновление предназначено для другого приложения.')
+    version=info.get('version','')
+    if version_tuple(version)<=version_tuple(current):return None
+    name=info.get('archive','')
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+\.zip',name):raise ValueError('Некорректное имя пакета обновления.')
+    if not re.fullmatch(r'[a-fA-F0-9]{64}',info.get('sha256','')):raise ValueError('В обновлении отсутствует SHA-256.')
+    url='https://github.com/'+REPOSITORY+'/releases/download/v'+version+'/'+name
+    size=info.get('size')
+    if size is None:
+        # Older releases did not put size in the manifest. Probe one byte;
+        # never download an unbounded response just to learn the size.
+        try:
+            with opener(url,{'Range':'bytes=0-0'}) as response:
+                if getattr(response,'status',200)==206:
+                    m=re.fullmatch(r'bytes 0-0/(\d+)',response.headers.get('Content-Range',''))
+                    if m:size=int(m[1])
+                else:
+                    length=response.headers.get('Content-Length','')
+                    if length.isdigit():size=int(length)
+        except (HTTPError,URLError,TimeoutError,OSError) as e:
+            raise ValueError(connection_message(e,url)) from e
+    if not isinstance(size,int) or not 0<size<=MAX_ARCHIVE:raise ValueError('Не удалось определить допустимый размер обновления.')
+    return {**info,'url':url,'size':size}
 
 
 def download_update(info,cache=None,opener=open_url,progress=None):

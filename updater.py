@@ -273,7 +273,7 @@ def publish(folder, output, version):
                 if rel.parts[0] in ('settings.json', 'userdata', 'user-data'):continue
                 if p.is_file():z.write(p, rel.as_posix())
         os.replace(tmp, archive)
-        manifest = {'product':'ContractPrintApp', 'version': version, 'archive': name, 'sha256': digest(archive)}
+        manifest = {'product':'ContractPrintApp', 'version': version, 'archive': name, 'sha256': digest(archive), 'size':archive.stat().st_size}
         fd, meta = tempfile.mkstemp(suffix='.json', dir=output)
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             json.dump(manifest, f, ensure_ascii=False, indent=2)

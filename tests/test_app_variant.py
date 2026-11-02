@@ -36,7 +36,7 @@ class AppVariantTests(unittest.TestCase):
 
     def test_empty_directory_and_version(self):
         self.assertEqual(FIRMS,{})
-        self.assertEqual(VERSION,'1.12.2')
+        self.assertEqual(VERSION,'1.12.3')
         app=SimpleNamespace(settings={})
         Features.init_features(app)
         self.assertEqual(app.firms,{})

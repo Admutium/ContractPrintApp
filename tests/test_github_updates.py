@@ -4,7 +4,8 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from github_updates import API, REPOSITORY, MANIFEST, latest_update, download_update, allowed_url
+from urllib.error import HTTPError,URLError
+from github_updates import API, REPOSITORY, MANIFEST, LATEST_MANIFEST, latest_update, latest_update_api, download_update, allowed_url
 
 
 class Response(io.BytesIO):
@@ -28,11 +29,11 @@ class GitHubUpdateTests(unittest.TestCase):
         def opener(url):
             calls.append(url)
             return Response(json.dumps(release if url==API else info).encode())
-        self.assertEqual(latest_update('1.11.1',opener)['sha256'],info['sha256'])
+        self.assertEqual(latest_update_api('1.11.1',opener)['sha256'],info['sha256'])
         self.assertEqual(len(calls),2)
-        calls.clear();self.assertIsNone(latest_update('1.12.0',opener));self.assertEqual(calls,[API])
+        calls.clear();self.assertIsNone(latest_update_api('1.12.0',opener));self.assertEqual(calls,[API])
         release['assets'][1]['digest']='sha256:'+'0'*64
-        with self.assertRaisesRegex(ValueError,'суммы'):latest_update('1.11.1',opener)
+        with self.assertRaisesRegex(ValueError,'суммы'):latest_update_api('1.11.1',opener)
 
     def test_resume_partial_download(self):
         data=b'demonstration payload';info=self.info(data)
@@ -65,3 +66,23 @@ class GitHubUpdateTests(unittest.TestCase):
         self.assertTrue(allowed_url('https://release-assets.githubusercontent.com/file'))
         for url in ('http://github.com/file','https://github.com.evil.invalid/a','https://user:pass@github.com/a','file:///tmp/a'):
             self.assertFalse(allowed_url(url))
+
+    def test_public_download_does_not_need_api(self):
+        info=self.info();calls=[]
+        def opener(url,headers=None):
+            calls.append(url)
+            if url==API:raise HTTPError(url,404,'Not Found',{},None)
+            self.assertEqual(url,LATEST_MANIFEST)
+            return Response(json.dumps(info).encode())
+        result=latest_update('1.11.1',opener)
+        self.assertEqual(result['version'],info['version'])
+        self.assertEqual(calls,[LATEST_MANIFEST])
+
+    def test_unreachable_api_and_older_manifest_without_size(self):
+        info=self.info();size=info.pop('size')
+        def opener(url,headers=None):
+            if url==API:raise URLError(TimeoutError())
+            if url==LATEST_MANIFEST:return Response(json.dumps(info).encode())
+            self.assertEqual(headers,{'Range':'bytes=0-0'})
+            return Response(b'd',206,{'Content-Range':f'bytes 0-0/{size}'})
+        self.assertEqual(latest_update('1.11.1',opener)['size'],size)
