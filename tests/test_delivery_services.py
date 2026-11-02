@@ -41,6 +41,12 @@ class ServiceDeliveryTests(unittest.TestCase):
         r=find_delivery(['Срок оказания услуг:','С 01.02.2032 по 15.05.2032 включительно.'])
         self.assertEqual(r.main[0].value,'С 01.02.2032 по 15.05.2032 включительно')
 
+    def test_adjacent_goods_label_keeps_existing_word_table_support(self):
+        for label in ('Срок поставки товара:','Период поставки продукции:'):
+            with self.subTest(label=label):
+                r=find_delivery([label,'С 01.02.2032 по 15.05.2032 включительно.'])
+                self.assertEqual(r.main[0].value,'С 01.02.2032 по 15.05.2032 включительно')
+
     def test_existing_goods_and_request_terms(self):
         r=find_delivery([
             'Поставка товара в течение 10 рабочих дней с даты заключения контракта.',

@@ -69,8 +69,8 @@ def main():
     shutil.copy2(result,built/'SELF_TEST.json')
     shutil.copy2(probe,built/'TK_BUILD_INFO.json')
     freeze=subprocess.check_output([str(py),'-m','pip','freeze'],text=True,encoding='utf-8')
-    (built/'BUILD_INFO.txt').write_text(f'ContractPrintApp 1.12.1\nBuilt: {stamp}\nPython: {sys.version}\n{freeze}',encoding='utf-8')
-    for name in ['ИНСТРУКЦИЯ_App.txt','ПРОВЕРКА_App.txt','LICENSE.txt','ИЗМЕНЕНИЯ_1.12.1_App.txt','ОБНОВЛЕНИЯ_App.md']:
+    (built/'BUILD_INFO.txt').write_text(f'ContractPrintApp 1.12.2\nBuilt: {stamp}\nPython: {sys.version}\n{freeze}',encoding='utf-8')
+    for name in ['ИНСТРУКЦИЯ_App.txt','ПРОВЕРКА_App.txt','LICENSE.txt','ИЗМЕНЕНИЯ_1.12.2_App.txt','ОБНОВЛЕНИЯ_App.md']:
         if (source/name).exists():shutil.copy2(source/name,built/name)
     # The verified program is the one final folder. No file picker, ZIP copies or installer.
     final=source/'dist'/'ContractPrintApp'
