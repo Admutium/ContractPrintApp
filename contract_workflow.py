@@ -57,9 +57,7 @@ class Workflow:
         threading.Thread(target=worker,daemon=True).start()
 
     def review_delivery(self,result,name):
-        if not result.main and not result.request:
-            messagebox.showinfo('Сроки не найдены','\n'.join(result.warnings)+'\nМожно заполнить оба поля вручную.',parent=self.root);return
-        win=new_dialog(self.root,'Сроки поставки · '+name,940,740)
+        win=new_dialog(self.root,'Сроки исполнения · '+name,940,740)
         area,outer=scroll_body(win)
         warnings=list(result.warnings)
         notice=self.v['notice'].get().strip()
@@ -72,7 +70,13 @@ class Workflow:
             candidates=getattr(result,kind)
             group=ttk.LabelFrame(outer,text=title,padding=8);group.pack(fill='both',expand=True,pady=5)
             if not candidates:
-                ttk.Label(group,text='Не найден. Текущее значение останется без изменений.').pack(anchor='w');continue
+                ttk.Label(group,text='Автоматически не найден. Можно ввести формулировку вручную.').pack(anchor='w')
+                enabled=tk.BooleanVar(value=False)
+                ttk.Checkbutton(group,text='Перенести ручную формулировку в карточку',variable=enabled).pack(anchor='w')
+                value=ScrolledText(group,height=3,wrap='word',font=(UI_FONT,10));value.pack(fill='x')
+                existing=self.v['request_delivery'].get() if kind=='request' else self.v['delivery_text'].get() if self.v['delivery_mode'].get()=='Своя формулировка' else ''
+                value.insert('1.0',existing)
+                edits.append((kind,enabled,None,value));continue
             enabled=tk.BooleanVar(value=len(candidates)==1 and not current)
             ttk.Checkbutton(group,text='Перенести в карточку'+(' (заменить текущее значение)' if current else ''),variable=enabled).pack(anchor='w')
             labels=['Выберите вариант']+[x.location+' · '+x.value[:100] for x in candidates]
@@ -90,8 +94,8 @@ class Workflow:
             for kind,enabled,choice,value in edits:
                 if not enabled.get():continue
                 text=value.get('1.0','end-1c').strip()
-                if choice.current()<1 or not text:
-                    messagebox.showinfo('Выберите срок','Выберите исходный вариант и заполните текст для переноса.',parent=win);return
+                if (choice is not None and choice.current()<1) or not text:
+                    messagebox.showinfo('Выберите срок','Введите формулировку срока для переноса.' if choice is None else 'Выберите исходный вариант и заполните текст для переноса.',parent=win);return
                 selected.append((kind,text))
             if not selected:
                 messagebox.showinfo('Перенос','Отметьте хотя бы одно поле для переноса.',parent=win);return

@@ -9,7 +9,29 @@ NUM=r'(?:\d{1,4}(?:\s*\([^)]{1,40}\))?|одного|двух|трех|трёх|�
 DURATION=re.compile(r'(?:в\s+течение|не\s+позднее(?:\s+чем)?|не\s+более|сроком|срок[^.;]{0,12})\s*(?:в\s+)?('+NUM+r')\s*(рабоч\w*|календарн\w*)?\s*(?:дней|дня|день|суток|сутки)\b',re.I)
 ANCHOR=r'(?:с|s)\s+(?:момента|даты|дня)\s+(?:заключения|подписания)\s+(?:настоящего\s+)?конт[ра]*кта'
 ANCHOR_RE=re.compile(ANCHOR,re.I)
-EXCLUDE=re.compile(r'сообщить|приостанов|приемк|приёмк|оплат|замен[ауые]|недопостав|недостат|некачествен|уведомлен|подтвержден|подтверждён|возражени|гаранти|срок годности|остаточн|обеспечени|согласоват|информиров|устранени',re.I)
+EXCLUDE=re.compile(r'сообщить|приостанов|приемк|приёмк|оплат|уплат|уплач|возврат|неустойк|штраф|претензи|замен[ауые]|недопостав|недостат|некачествен|уведомлен|подтвержден|подтверждён|возражени|гаранти|срок годности|остаточн|обеспечени|согласоват|информиров|устранени',re.I)
+SUBJECT=r'(?:постав\w*|оказани\w*\s+услуг\w*|выполнени\w*\s+работ\w*)'
+TERM_LABEL=re.compile(r'^\s*(?:\d+(?:\.\d+)*\.?\s*)?(?:срок(?:и)?|период)\s+'+SUBJECT+r'\s*[:–—-]?\s*$',re.I)
+SERVICE=re.compile(r'\b(?:оказани\w*\s+услуг\w*|оказать\s+услуг\w*|услуг\w*\s+оказыва\w*|выполнени\w*\s+работ\w*|выполнить\s+работ\w*)',re.I)
+FREQUENCY=re.compile(r'\b(?:(?:(?:один|два|две|три|четыре|\d+)\s+)?раз(?:а)?\s+в\s+(?:(?:\d+|один|одну|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять)\s+)?(?:месяц\w*|недел\w*|квартал\w*|полгода|год\w*|день|дня|дней)|ежедневно|еженедельно|ежемесячно|ежеквартально|ежегодно)\b',re.I)
+REPORTING=re.compile(r'отч[её]тн\w*\s+период',re.I)
+
+
+def candidate_key(value):
+    normalized=value.lower().replace('ё','е')
+    def convert(match):
+        try:return date_value(match[1])
+        except ValueError:return match[0]
+    normalized=re.sub('('+DATE+r')(?:\s*(?:года\b|г\.?(?=\s|$|[.;,])))?',convert,normalized,flags=re.I)
+    return re.sub(r'\s+',' ',normalized).strip(' .;')
+
+
+def periodic_text(sentence):
+    # Keep cadence, anchors, deadlines and qualifications as written. Do not
+    # turn a recurring service into a single deadline or calculate visit dates.
+    value=re.sub(r'^\s*(?:\d+(?:\.\d+)*\.?\s*)?(?:срок(?:и)?|период)\s+'+SUBJECT+r'\s*[:–—-]\s*','',sentence,flags=re.I)
+    if value==sentence:value=re.sub(r'^\s*\d+(?:\.\d+)*\.(?:\s+|(?=[А-Яа-яЁёA-Za-z]))','',sentence)
+    return value[:1].upper()+value[1:]
 
 @dataclass
 class Candidate:
@@ -36,7 +58,7 @@ def date_value(value):
     return datetime(year,month,day).strftime('%d.%m.%Y')
 
 def location(text,index):
-    m=re.match(r'^\s*(\d+(?:\.\d+)+)\.?\s',text)
+    m=re.match(r'^\s*(\d+(?:\.\d+)+)\.?(?:\s+|(?=[А-ЯЁA-Z]))',text)
     return 'Пункт '+m[1] if m else 'Абзац '+str(index+1)
 
 def sentences(text):
@@ -51,7 +73,7 @@ def find_delivery(paragraphs):
             result.notice_numbers.extend(re.findall(r'(?<!\d)\d{19}(?!\d)',p))
     result.notice_numbers=list(dict.fromkeys(result.notice_numbers))
     def add(kind,value,p,loc):
-        key=(kind,value)
+        key=(kind,candidate_key(value))
         if key not in seen:
             seen.add(key);getattr(result,kind).append(Candidate(kind,value,p,loc))
     for i,p in enumerate(paragraphs):
@@ -62,13 +84,26 @@ def find_delivery(paragraphs):
         elif last_loc:loc=last_loc+' / следующий абзац'
         # Adjacent table cells: a short delivery label followed by its value.
         context=p
-        if i and len(paragraphs[i-1])<100 and re.search(r'(?:срок|период).*постав',paragraphs[i-1],re.I):context=paragraphs[i-1]+' '+p
+        if i and len(paragraphs[i-1])<150 and TERM_LABEL.fullmatch(paragraphs[i-1]):context=paragraphs[i-1]+' '+p
         for sentence in sentences(context):
             s=sentence.lower().replace('ё','е')
-            delivery=bool(re.search(r'поставк[аиуы]|поставить|поставляется|поставляются|доставк[аиу]|отгрузк[аиу]',s))
+            delivery=bool(re.search(r'поставк[аиуы]|поставить|поставляется|поставляются|доставк[аиу]|отгрузк[аиу]',s) or SERVICE.search(s))
             if not delivery:
-                delivery=bool(re.search('постав',section,re.I) and re.match(r'^\s*(?:\d+\.\d+\.?\s*)?(?:срок|период|с\s+\d)',s))
+                delivery=bool(re.search(SUBJECT,section,re.I) and re.match(r'^\s*(?:\d+\.\d+\.?\s*)?(?:срок|период|с\s+\d)',s))
+            if delivery and REPORTING.search(s):
+                if FREQUENCY.search(s):
+                    warning=loc+': отдельно указана периодичность отчётности. Сверьте её с основным сроком; она не переносится как срок оказания услуг.'
+                    if warning not in result.warnings:result.warnings.append(warning)
+                continue
+            if re.search(r'срок\s+действия\s+(?:контракта|договора)',s):continue
             if not delivery or EXCLUDE.search(s):continue
+            if FREQUENCY.search(s):
+                try:
+                    for match in re.finditer(DATE,s,re.I):date_value(match[0])
+                except ValueError:
+                    result.warnings.append(loc+': некорректная дата. Укажите срок вручную.');continue
+                add('request' if re.search('заявк',s) else 'main',periodic_text(sentence),p,loc)
+                continue
             # Period / deadline. Preserve «до» versus «по» and inclusive wording.
             m=re.search(r'\bс\s+('+DATE+r')\s*(?:года|г\.)?\s*по\s+('+DATE+r')',s,re.I)
             try:
