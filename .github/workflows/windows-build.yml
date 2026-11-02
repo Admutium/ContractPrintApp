@@ -62,25 +62,26 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          Compress-Archive -Path dist/ContractPrintApp -DestinationPath ContractPrintApp-1.12.3-windows.zip
-          python updater.py dist/ContractPrintApp update-feed 1.12.3
+          Compress-Archive -Path dist/ContractPrintApp -DestinationPath ContractPrintApp-1.12.4-windows.zip
+          python updater.py dist/ContractPrintApp update-feed 1.12.4
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Compress-Archive -Path update-feed/* -DestinationPath ContractPrintApp-1.12.3-update-kit.zip
+          Compress-Archive -Path update-feed/* -DestinationPath ContractPrintApp-1.12.4-update-kit.zip
           @'
-          ContractPrintApp 1.12.3
+          ContractPrintApp 1.12.4
 
-          Проверка обновлений через обычную ссылку github.com без обязательного обращения к API.
-          Добавлены подробные сообщения о DNS, тайм-аутах и HTTPS-сертификатах.
-          Метаданные обновления включают размер пакета.
-          Готовая программа для Windows: ContractPrintApp-1.12.3-windows.zip.
+          Распознавание вложенной таблицы количества ЕИС для одного заказчика.
+          Количества нескольких заказчиков не суммируются автоматически.
+          Служебный идентификатор позиции отделён от названия для сравнения.
+          Проверка обновлений через обычный github.com не требует обязательного доступа к API.
+          Готовая программа для Windows: ContractPrintApp-1.12.4-windows.zip.
           Распакуйте в отдельную папку и запустите ContractPrintApp.exe. Python для запуска не требуется.
           Справочник организаций изначально пуст и заполняется пользователем.
           Настройки хранятся в user-data рядом с программой; сохраняйте эту папку при переносе.
           Для старых версий с ошибкой распаковки рекомендуется разовая ручная установка с сохранением user-data.
-          Для обновления через сетевую папку скачайте ContractPrintApp-1.12.3-update-kit.zip.
+          Для обновления через сетевую папку скачайте ContractPrintApp-1.12.4-update-kit.zip.
           Распакуйте два файла из него в отдельную папку обновлений на общем диске.
           В установленной 1.11.0 выберите эту папку: Настройки → Папка обновлений.
           Сохраните PDF и закройте остальные экземпляры перед установкой обновления.
           Проверены основные сценарии, GitHub-загрузка, ZIP на SMB-диске и запуск готового EXE.
           '@ | Set-Content -Encoding utf8 release-notes.txt
-          gh release create v1.12.3 ContractPrintApp-1.12.3-windows.zip ContractPrintApp-1.12.3-update-kit.zip update-feed/ContractPrintApp-1.12.3-update.zip update-feed/update-ContractPrintApp.json assets/ContractPrintApp.ico --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "ContractPrintApp 1.12.3" --notes-file release-notes.txt
+          gh release create v1.12.4 ContractPrintApp-1.12.4-windows.zip ContractPrintApp-1.12.4-update-kit.zip update-feed/ContractPrintApp-1.12.4-update.zip update-feed/update-ContractPrintApp.json assets/ContractPrintApp.ico --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "ContractPrintApp 1.12.4" --notes-file release-notes.txt

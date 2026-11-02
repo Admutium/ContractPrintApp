@@ -76,6 +76,7 @@ def _header(value):
     s=normalized_label(value)
     if s.startswith(('наименование объекта','наименование товара','наименование продукции')):return 'name'
     if s.startswith(('количество','объем (количество)','объем закупки')) or s=='объем':return 'qty'
+    if re.match(r'^заказчик\s+количество\b',s):return 'qty'
     if 'единиц' in s and 'измерен' in s:return 'unit'
     if ('код' in s and any(x in s for x in ('позици','окпд','ктру','товар','продукц'))) or s in ('окпд2','ктру'):return 'code'
     if s in ('№ п/п','№','n п/п','п/п','номер позиции'):return 'no'
@@ -103,9 +104,31 @@ def _grid(table):
         pending=next_pending
         yield [cells.get(i) for i in range(max(cells,default=-1)+1)]
 
+
+def customer_quantity(cell):
+    """Read a single customer's explicit quantity; never sum joint purchases."""
+    tables=cell.xpath('./table|./div/table')
+    if len(tables)!=1:raise ValueError('Неоднозначная вложенная таблица количества.')
+    rows=[]
+    for row in tables[0].xpath('./tr|./thead/tr|./tbody/tr|./tfoot/tr'):
+        cells=row.xpath('./td|./th')
+        if not cells:continue
+        values=[text(c) for c in cells]
+        if len(values)==2 and normalized_label(values[0])=='заказчик' and _header(values[1])=='qty':continue
+        if not any(values):continue
+        if len(cells)!=2 or any(c.xpath('.//table') for c in cells):
+            raise ValueError('Не распознана структура количества по заказчикам.')
+        if not values[0] or normalized_label(values[0]).startswith(('итого','всего')):
+            raise ValueError('Не определён заказчик количества.')
+        quantity(values[1])
+        rows.append((values[1],normalized_label(values[0])))
+    if len(rows)!=1:
+        raise ValueError('Количество разбито по нескольким заказчикам или не указано; суммирование не выполняется.')
+    return rows[0]
+
 def parse_items(root):
     """Header-based EIS object tables; reject partial/ambiguous quantity structures."""
-    items=[];issues=[];tables_found=0
+    items=[];issues=[];tables_found=0;customers=set()
     for table in root.xpath('//table'):
         mapping={};seen=set();current=None
         try:rows=list(_grid(table))
@@ -148,10 +171,14 @@ def parse_items(root):
             # Registration certificates and trade marks are nested blocks in
             # the contract, not part of the EIS product name.
             name=clean(' '.join(namecell.xpath('./text()'))) or values[mapping['name']]
+            name=re.sub(r'\s+идентификатор\s*:\s*[0-9a-z-]+\s*$','',name,flags=re.I).strip()
             q=values[mapping['qty']]
             if not name and not q:continue
             if qtycell.xpath('.//table'):
-                issues.append('Количество разбито по заказчикам или вложенным таблицам.');continue
+                try:
+                    q,customer=customer_quantity(qtycell);customers.add(customer)
+                except ValueError as error:
+                    issues.append(str(error));continue
             try:
                 amount,embedded=quantity(q)
                 unit=values[mapping['unit']] if 'unit' in mapping else embedded
@@ -163,6 +190,7 @@ def parse_items(root):
             current=NoticeItem(values[mapping['no']] if 'no' in mapping else str(len(items)+1),name,code,str(amount),unit)
             items.append(current)
     if not tables_found:issues.append('Таблица количеств в извещении не распознана.')
+    if len(customers)>1:issues.append('В позициях указаны разные заказчики; нужна сверка количества своего заказчика.')
     if not items and not issues:issues.append('В извещении нет определённых количеств.')
     return items,list(dict.fromkeys(issues))
 
