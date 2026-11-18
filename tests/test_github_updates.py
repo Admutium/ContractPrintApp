@@ -78,6 +78,15 @@ class GitHubUpdateTests(unittest.TestCase):
         self.assertEqual(result['version'],info['version'])
         self.assertEqual(calls,[LATEST_MANIFEST])
 
+    def test_download_error_does_not_trigger_api_request(self):
+        calls=[]
+        def opener(url,headers=None):
+            calls.append(url)
+            if url==API:raise AssertionError('API must not be contacted')
+            raise HTTPError(url,404,'Not Found',{},None)
+        with self.assertRaisesRegex(ValueError,'404'):latest_update('1.11.1',opener)
+        self.assertEqual(calls,[LATEST_MANIFEST])
+
     def test_unreachable_api_and_older_manifest_without_size(self):
         info=self.info();size=info.pop('size')
         def opener(url,headers=None):

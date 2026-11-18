@@ -1,4 +1,4 @@
-"""ContractPrintApp 1.12.4 - desktop UI, no contract persistence."""
+"""ContractPrintApp 1.13.0 - desktop UI, no contract persistence."""
 import copy, json, os, sys, tempfile, threading, queue
 from pathlib import Path
 from datetime import datetime
@@ -13,12 +13,13 @@ from contract_ui import Editing, UI_FONT
 from comparison_ui import QuantityPanel
 from contract_dates import date_line
 from update_ui import UpdateUI
+from auto_eis import AutoEIS
 
 DELIVERY_MODES=('От подписания до даты','Дней от подписания','Период дат','Своя формулировка','Пустые поля')
 
-class Application(UpdateUI,QuantityPanel,Editing,Workflow,Preview,Features):
+class Application(AutoEIS,UpdateUI,QuantityPanel,Editing,Workflow,Preview,Features):
     def __init__(self,root):
-        self.root=root;root.title('ContractPrintApp 1.12.4 · Карточка контракта');root.geometry(f'{min(1240,root.winfo_screenwidth()-40)}x{min(820,root.winfo_screenheight()-80)}');root.minsize(1100,650)
+        self.root=root;root.title('ContractPrintApp 1.13.0 · Карточка контракта');root.geometry(f'{min(1240,root.winfo_screenwidth()-40)}x{min(820,root.winfo_screenheight()-80)}');root.minsize(1100,650)
         self.contract=None;self.temp=None;self.pdf=None;self.outputs=None;self.page=0;self.zoom=1.;self.busy=False;self.events=queue.Queue()
         from app_paths import settings_path
         self.settings_path=settings_path()
@@ -45,7 +46,7 @@ class Application(UpdateUI,QuantityPanel,Editing,Workflow,Preview,Features):
             b=ttk.Button(enrichment,text=label,command=cmd);b.pack(side='left',padx=(0,6));b.state(['disabled']);self.enrichment_buttons.append(b)
         more=ttk.Menubutton(enrichment,text='ЕИС ▾');more.pack(side='left',padx=4)
         menu=tk.Menu(more,tearoff=0);menu.add_command(label='Загрузить извещение HTML',command=self.notice_dialog);menu.add_command(label='Открыть извещение в браузере',command=self.open_eis);more.configure(menu=menu)
-        self.eis_source=tk.StringVar(value='ЕИС загружается только по кнопке после загрузки контракта.')
+        self.eis_source=tk.StringVar(value='ЕИС загрузится автоматически через секунду после открытия контракта.')
         ttk.Label(root,textvariable=self.eis_source,padding=(16,0,16,5),wraplength=1100).pack(fill='x')
         self.workspace=ttk.Panedwindow(root,orient='horizontal');self.workspace.pack(fill='both',expand=True,padx=12)
         self.editor=ttk.Frame(self.workspace);self.workspace.add(self.editor,weight=1)
@@ -161,6 +162,7 @@ class Application(UpdateUI,QuantityPanel,Editing,Workflow,Preview,Features):
             root.drop_target_register(DND_FILES);root.dnd_bind('<<Drop>>',self.drop)
         except (ImportError,tk.TclError):pass
         root.protocol('WM_DELETE_WINDOW',self.close);root.report_callback_exception=self.callback_error
+        self.init_auto_eis()
         self.controls();self.update_name();root.after(150,self.poll)
         # Allocate footer controls before letting the workspace consume the rest.
         self.workspace.pack_forget();self.workspace.pack(fill='both',expand=True,padx=12)
@@ -403,7 +405,8 @@ class Application(UpdateUI,QuantityPanel,Editing,Workflow,Preview,Features):
     def reset(self,confirm=False):
         if not self.guard():return
         if confirm and self.contract and not messagebox.askyesno('Сброс','Сбросить все данные текущего контракта?',parent=self.root):return
-        self._notice_snapshot=None;self._quantity_key=None;self._history=[];self.contract=None;self.clear_preview();self.original_inn='';self.source_name='';self.eis_info='';self.eis_source.set('ЕИС загружается только по кнопке после загрузки контракта.')
+        self.cancel_auto_eis()
+        self._notice_snapshot=None;self._quantity_key=None;self._history=[];self.contract=None;self.clear_preview();self.original_inn='';self.source_name='';self.eis_info='';self.eis_source.set('ЕИС загрузится автоматически через секунду после открытия контракта.')
         for k,v in self.v.items():v.set('')
         self.v['concluded'].set('Нет');self.v['created_date'].set(datetime.now().strftime('%d.%m.%Y'));self.v['delivery_mode'].set('Пустые поля');self.v['day_type'].set('календарных');self.v['reduction_basis'].set('По НМЦК и цене контракта');self.v['etp'].set(ETPS[0]);self.manual.set(False);self.increased.set(False);self.custom_name.set(False);self.include_note.set(False)
         self.note.delete('1.0','end');self.note.edit_reset();self.tree.delete(*self.tree.get_children());self.controls();self.update_name();self.reduction_text.set('Снижение: заполните НМЦК или введите процент вручную.');self.status.set('Карточка сброшена. Сохранённые PDF не удалены.');self.book.select(0)
@@ -431,6 +434,7 @@ class Application(UpdateUI,QuantityPanel,Editing,Workflow,Preview,Features):
         self.status.set(f'{Path(path).name} · {len(c.items)} позиций'+(' · Количество не определено' if c.unknown else ''))
         self.mark_saved();self.reset_history();self.schedule_preview()
         if c.warnings:messagebox.showwarning('Проверьте данные','\n\n'.join(c.warnings))
+        self.schedule_auto_eis()
     def populate(self):
         self.tree.delete(*self.tree.get_children())
         for n,i in enumerate(self.contract.items):self.tree.insert('','end',iid=str(n),values=(i.no,i.name,i.qty,i.price,(money(str(vat_amount(i.total,i.vat))) if vat_amount(i.total,i.vat) is not None else i.vat),i.total))
@@ -550,11 +554,12 @@ class Application(UpdateUI,QuantityPanel,Editing,Workflow,Preview,Features):
         name=tk.StringVar(value=self.settings.get('printer',default));
         if name.get() not in names:name.set(default if default in names else names[0])
         ttk.Label(f,text='Принтер').pack(anchor='w');ttk.Combobox(f,textvariable=name,values=names,state='readonly',width=70).pack(fill='x',pady=5)
-        modes=('Двусторонняя: весь комплект','Односторонняя: все лицевые','Односторонняя: оборот первого листа');mode=tk.StringVar(value=self.settings.get('print_mode',modes[0]));
+        modes=('Двусторонняя: весь комплект','Односторонняя: все лицевые','Односторонняя: оборот последнего листа');mode=tk.StringVar(value=self.settings.get('print_mode',modes[0]));
+        if mode.get()=='Односторонняя: оборот первого листа':mode.set(modes[2])
         if mode.get() not in modes:mode.set(modes[0])
         ttk.Combobox(f,textvariable=mode,values=modes,state='readonly',width=70).pack(fill='x',pady=8)
         ttk.Label(f,text='Копий').pack(anchor='w');copies=tk.StringVar(value='1');ttk.Spinbox(f,from_=1,to=99,textvariable=copies,width=5).pack(anchor='w')
-        ttk.Label(f,text='A4 · книжная · 100% · двусторонняя по длинному краю.\nДля ручной печати сначала печатайте лицевые, затем только оборот\nпервого листа. Ориентацию повторной подачи проверьте на одном листе.',wraplength=590).pack(anchor='w',pady=14)
+        ttk.Label(f,text='A4 · книжная · 100% · двусторонняя по длинному краю.\nДля ручной печати сначала печатайте лицевые, затем подайте только\nпоследний лист для печати оборота. Ориентацию подачи проверьте на одном листе.',wraplength=590).pack(anchor='w',pady=14)
         def run():
             try:count=int(copies.get());assert 1<=count<=99
             except (ValueError,AssertionError):messagebox.showerror('Копии','Введите число от 1 до 99.',parent=win);return
@@ -567,8 +572,10 @@ class Application(UpdateUI,QuantityPanel,Editing,Workflow,Preview,Features):
         ttk.Button(f,text='Напечатать',command=run).pack(side='right')
     def poll(self):
         try:
-            kind,msg=self.events.get_nowait();self.busy=False
-            if kind=='notice':self.status.set('Извещение получено. Проверьте найденные поля.');self.review_notice(msg)
+            kind,msg=self.events.get_nowait()
+            if kind!='auto_notice':self.busy=False
+            if kind=='auto_notice':self.finish_auto_notice(*msg)
+            elif kind=='notice':self.status.set('Извещение получено. Проверьте найденные поля.');self.review_notice(msg)
             elif kind=='delivery':self.status.set('Поиск сроков завершён. Проверьте результат.');self.review_delivery(*msg)
             else:
                 self.status.set(msg)
@@ -578,6 +585,7 @@ class Application(UpdateUI,QuantityPanel,Editing,Workflow,Preview,Features):
         self.root.after(150,self.poll)
     def close(self):
         if not self.guard():return
+        self.cancel_auto_eis()
         self.remember();self.clear_preview();self.root.destroy()
 
 def make_root():

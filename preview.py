@@ -7,10 +7,10 @@ from tkinter import ttk
 def fit_scale(width,height,page_width,page_height,padding=24):
     return max(.05,min(max(1,width-padding)/page_width,max(1,height-padding)/page_height))
 
-def visible_pages(count):return [i for i in range(count) if i<2 or i%2==0]
+def visible_pages(count):return [i for i in range(count) if i%2==0 or i==count-1]
 
-def page_description(index):
-    return 'Карточка контракта' if index==1 else f'Лист {index//2+1}'
+def page_description(index,count):
+    return 'Карточка контракта · оборот последнего листа' if index==count-1 else f'Лист {index//2+1}'
 
 class Preview:
     def init_thumbnails(self,parent):
@@ -70,7 +70,7 @@ class Preview:
             y=slot*156+5
             canvas.create_rectangle(6,y-2,98,y+picture.height()+2,fill='white',outline='#2b6493' if index==self.page else '#b6c0ca',width=2)
             canvas.create_image(8,y,anchor='nw',image=picture)
-            label='Карточка' if index==1 else f'Лист {index//2+1}'
+            label='Карточка' if index==len(self.pdf)-1 else f'Лист {index//2+1}'
             canvas.create_text(52,y+picture.height()+12,text=label,fill='#263747',font=(UI_FONT,9))
         while len(self.thumb_cache)>12:self.thumb_cache.popitem(last=False)
 
@@ -109,7 +109,7 @@ class Preview:
         self.pcanvas.delete('all');self.pcanvas.create_image(x,y,anchor='nw',image=self.tkimage)
         self.pcanvas.configure(scrollregion=(0,0,max(width,pix.width+24),max(height,pix.height+24)))
         sheets=self.outputs['sheets'] if self.outputs else max(1,(len(self.pdf)+1)//2)
-        self.page_label.set(f'{page_description(self.page)} · всего листов: {sheets} · {round(self.zoom*100)}%')
+        self.page_label.set(f'{page_description(self.page,len(self.pdf))} · всего листов: {sheets} · {round(self.zoom*100)}%')
         self.queue_thumbnails()
 
     def go_page(self,index):

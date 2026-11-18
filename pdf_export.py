@@ -52,7 +52,7 @@ def footer(c,back=False):
             while label and pdfmetrics.stringWidth(label+'…','Body',7)>limit:label=label[:-1]
             label+='…'
         canvas.drawString(M,22,label)
-        if back:canvas.drawRightString(W-M,22,'Оборот первого листа')
+        if back:canvas.drawRightString(W-M,22,'Оборот последнего листа')
         canvas.restoreState()
     return draw
 
@@ -181,8 +181,8 @@ def generate(c,o,directory):
         if len(back)!=1:raise ValueError('Оборот не поместился на один лист.')
         for n in range(len(fronts)):
             writer.insert_pdf(fronts,from_page=n,to_page=n)
-            if n==0:writer.insert_pdf(back)
-            elif n<len(fronts)-1:writer.new_page(width=W,height=H)
+            if n==len(fronts)-1:writer.insert_pdf(back)
+            else:writer.new_page(width=W,height=H)
         pages=len(writer);writer.save(paths['duplex'],garbage=4,deflate=True)
     return {**paths,'sheets':sheets,'pages':pages,'end_total':show_end}
 

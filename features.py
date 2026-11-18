@@ -9,7 +9,7 @@ from dialogs import messagebox,filedialog,new_dialog,scroll_body
 from core import clean, money, extract_inn, normalized_label
 from eis import notice_url, fetch_notice, load_notice
 
-VERSION='1.12.4'
+VERSION='1.13.0'
 NOTICE_FIELDS=(('procurement_method','Способ закупки'),('nmck','НМЦК'),('smp','СМП / СОНКО · ч. 3 ст. 30'),('life','Жизнеобеспечение · ч. 9 ст. 37'),('etp','ЭТП'),('ikz','ИКЗ'))
 class Features:
     def supplier_selector(self):
@@ -130,17 +130,11 @@ class Features:
 
     def eis_click(self):
         if not self.need():return
-        number=self.v['notice'].get().strip()
-        try:notice_url(number)
-        except ValueError as e:messagebox.showerror('ЕИС',str(e));return
-        self.busy=True;self.status.set('Получаем извещение из ЕИС… Карточка останется открыта.')
-        def worker():
-            try:self.events.put(('notice',fetch_notice(number)))
-            except Exception as e:self.events.put(('eis_error',str(e)))
-        threading.Thread(target=worker,daemon=True).start()
+        self.start_eis_request()
 
     def notice_dialog(self):
         if not self.need():return
+        self.cancel_auto_eis(clear_baseline=False)
         path=filedialog.askopenfilename(title='Печатная форма извещения ЕИС',filetypes=[('HTML извещения','*.html *.htm')])
         if not path:return
         try:

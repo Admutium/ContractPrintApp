@@ -78,14 +78,9 @@ def asset_url(asset,tag):
 
 
 def latest_update(current,opener=open_url):
-    # Prefer ordinary public release downloads: some networks cannot reach
-    # api.github.com even though github.com itself is available.
-    try:return latest_update_without_api(current,opener)
-    except ValueError as direct_error:
-        if not isinstance(direct_error.__cause__,(HTTPError,URLError,TimeoutError,OSError)) and not isinstance(direct_error,json.JSONDecodeError):raise
-        try:return latest_update_api(current,opener)
-        except ValueError as api_error:
-            raise ValueError('Проверка через GitHub и резервный API не удалась. '+str(direct_error)+' '+str(api_error)) from api_error
+    # Never fall back to api.github.com: it may be blocked independently of
+    # ordinary GitHub. Keep the original connection error actionable instead.
+    return latest_update_without_api(current,opener)
 
 
 def latest_update_api(current,opener=open_url):
