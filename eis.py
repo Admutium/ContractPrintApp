@@ -17,6 +17,7 @@ class Notice:
     revision: str=''
     items: list=field(default_factory=list)
     item_issues: list=field(default_factory=list)
+    payment: dict=field(default_factory=dict)
 
 def notice_url(number):
     number=clean(number)
@@ -87,6 +88,9 @@ def parse_notice(raw, expected='', source='', trusted_number=''):
     if not number and trusted_number==expected and trusted_number:number=trusted_number
     if not number:raise ValueError('Номер извещения в HTML не найден. Нужна полная печатная форма извещения с номером закупки.')
     result=Notice(number=number,source=source)
+    from dataclasses import asdict
+    from payment_data import parse_payment_html
+    result.payment=asdict(parse_payment_html(raw,source or 'Извещение ЕИС'))
     ikzs=[]
     amounts={'nmck':[], 'initial_units':[], 'maximum':[]};flags={'smp':[],'life':[]};platforms=[]
     seen_flags=set()
@@ -170,7 +174,7 @@ class EISRedirect(HTTPRedirectHandler):
 def fetch_notice(number):
     url=notice_url(number);start=time.monotonic()
     try:
-        with build_opener(EISRedirect()).open(Request(url,headers={'User-Agent':'ContractPrintApp/1.13.0','Accept':'text/html'}),timeout=15) as response:
+        with build_opener(EISRedirect()).open(Request(url,headers={'User-Agent':'ContractPrintApp/1.14.0','Accept':'text/html'}),timeout=15) as response:
             content_type=response.headers.get_content_type()
             if content_type not in ('text/html','application/xhtml+xml'):raise ValueError('ЕИС вернула документ другого типа. Загрузите HTML извещения вручную.')
             chunks=[];length=0

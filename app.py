@@ -1,4 +1,4 @@
-"""ContractPrintApp 1.13.0 - desktop UI, no contract persistence."""
+"""ContractPrintApp 1.14.0 - desktop UI, no contract persistence."""
 import copy, json, os, sys, tempfile, threading, queue
 from pathlib import Path
 from datetime import datetime
@@ -14,12 +14,13 @@ from comparison_ui import QuantityPanel
 from contract_dates import date_line
 from update_ui import UpdateUI
 from auto_eis import AutoEIS
+from payment_ui import PaymentUI
 
 DELIVERY_MODES=('От подписания до даты','Дней от подписания','Период дат','Своя формулировка','Пустые поля')
 
-class Application(AutoEIS,UpdateUI,QuantityPanel,Editing,Workflow,Preview,Features):
+class Application(PaymentUI,AutoEIS,UpdateUI,QuantityPanel,Editing,Workflow,Preview,Features):
     def __init__(self,root):
-        self.root=root;root.title('ContractPrintApp 1.13.0 · Карточка контракта');root.geometry(f'{min(1240,root.winfo_screenwidth()-40)}x{min(820,root.winfo_screenheight()-80)}');root.minsize(1100,650)
+        self.root=root;root.title('ContractPrintApp 1.14.0 · Карточка контракта');root.geometry(f'{min(1240,root.winfo_screenwidth()-40)}x{min(820,root.winfo_screenheight()-80)}');root.minsize(1100,650)
         self.contract=None;self.temp=None;self.pdf=None;self.outputs=None;self.page=0;self.zoom=1.;self.busy=False;self.events=queue.Queue()
         from app_paths import settings_path
         self.settings_path=settings_path()
@@ -163,6 +164,7 @@ class Application(AutoEIS,UpdateUI,QuantityPanel,Editing,Workflow,Preview,Featur
         except (ImportError,tk.TclError):pass
         root.protocol('WM_DELETE_WINDOW',self.close);root.report_callback_exception=self.callback_error
         self.init_auto_eis()
+        self.init_payment()
         self.controls();self.update_name();root.after(150,self.poll)
         # Allocate footer controls before letting the workspace consume the rest.
         self.workspace.pack_forget();self.workspace.pack(fill='both',expand=True,padx=12)
@@ -406,6 +408,7 @@ class Application(AutoEIS,UpdateUI,QuantityPanel,Editing,Workflow,Preview,Featur
         if not self.guard():return
         if confirm and self.contract and not messagebox.askyesno('Сброс','Сбросить все данные текущего контракта?',parent=self.root):return
         self.cancel_auto_eis()
+        self.reset_payment()
         self._notice_snapshot=None;self._quantity_key=None;self._history=[];self.contract=None;self.clear_preview();self.original_inn='';self.source_name='';self.eis_info='';self.eis_source.set('ЕИС загрузится автоматически через секунду после открытия контракта.')
         for k,v in self.v.items():v.set('')
         self.v['concluded'].set('Нет');self.v['created_date'].set(datetime.now().strftime('%d.%m.%Y'));self.v['delivery_mode'].set('Пустые поля');self.v['day_type'].set('календарных');self.v['reduction_basis'].set('По НМЦК и цене контракта');self.v['etp'].set(ETPS[0]);self.manual.set(False);self.increased.set(False);self.custom_name.set(False);self.include_note.set(False)
@@ -434,6 +437,7 @@ class Application(AutoEIS,UpdateUI,QuantityPanel,Editing,Workflow,Preview,Featur
         self.status.set(f'{Path(path).name} · {len(c.items)} позиций'+(' · Количество не определено' if c.unknown else ''))
         self.mark_saved();self.reset_history();self.schedule_preview()
         if c.warnings:messagebox.showwarning('Проверьте данные','\n\n'.join(c.warnings))
+        self.reset_payment(path)
         self.schedule_auto_eis()
     def populate(self):
         self.tree.delete(*self.tree.get_children())
@@ -522,6 +526,7 @@ class Application(AutoEIS,UpdateUI,QuantityPanel,Editing,Workflow,Preview,Featur
         if not folder.is_dir():raise ValueError('Папка сохранения недоступна.')
         return folder/filename(self.file_name.get())
     def save(self):
+        if self.payment_active():return self.save_payment()
         from pdf_export import atomic_copy
         if not self.need():return
         try:
@@ -544,6 +549,7 @@ class Application(AutoEIS,UpdateUI,QuantityPanel,Editing,Workflow,Preview,Featur
             self.mark_saved();self.remember();messagebox.showinfo('PDF сохранены','\n'.join(map(str,targets)))
         except Exception as e:messagebox.showerror('Сохранение',str(e))
     def print_dialog(self):
+        if self.payment_active():return self.print_payment()
         from printing import printers, print_pdf
         if not self.need():return
         try:self.refresh();names,default=printers()
@@ -586,6 +592,7 @@ class Application(AutoEIS,UpdateUI,QuantityPanel,Editing,Workflow,Preview,Featur
     def close(self):
         if not self.guard():return
         self.cancel_auto_eis()
+        self.reset_payment()
         self.remember();self.clear_preview();self.root.destroy()
 
 def make_root():
@@ -630,7 +637,19 @@ def self_test(output):
             from startup_check import wait_for_preview
             state=wait_for_preview(app)
             if len(app.pdf)!=2:raise RuntimeError('Unexpected PDF page count')
-            report={'status':'ok','icon_state':icon_state,'preview_state':state,'checks':['application_icon','empty_directory','local_supplier','window','pdf','preview','thumbnails']}
+            if app._payment_built or app._payment_temp is not None:raise RuntimeError('Payment was generated before opening the tab')
+            app.book.select(app.payment_tab);root.update()
+            values={'mode':'Своя сумма','custom':'100','number':'1'}
+            for party in ('payer','recipient'):
+                values.update({party+'_'+k:v for k,v in {'name':'Демонстрационная организация','inn':'0'*10,'kpp':'0'*9,'account':'0'*20,'bank':'Демонстрационный банк','bik':'0'*9,'bank_account':'0'*20}.items()})
+            for key,value in values.items():app.payment_vars[key].set(value)
+            app.render_payment()
+            if app._payment_temp is None or app._payment_render_key is None:raise RuntimeError('Payment preview failed: '+app.payment_preview_info.get())
+            import fitz
+            with fitz.open(Path(app._payment_temp.name)/'payment.pdf') as payment:
+                if len(payment)!=1 or 'Демонстрационная организация' not in payment[0].get_text():raise RuntimeError('Payment page or full payer name failed')
+            app.book.select(0);root.update();app.reset_payment()
+            report={'status':'ok','icon_state':icon_state,'preview_state':state,'checks':['application_icon','empty_directory','local_supplier','window','pdf','preview','thumbnails','lazy_payment_tab','payment_pdf_one_page','payment_payer_full_name']}
             app.clear_preview();root.destroy();root=None
     except Exception as e:
         report={'status':'error','error':str(e),'traceback':traceback.format_exc()}

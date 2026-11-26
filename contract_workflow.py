@@ -15,6 +15,7 @@ class Workflow:
             'manual':self.manual.get(),'increase':self.increased.get(),
             'include_note':self.include_note.get(),'note':self.note.get('1.0','end-1c'),
             'notice_snapshot':asdict(self._notice_snapshot) if getattr(self,'_notice_snapshot',None) else None,
+            'payment':{k:self.payment_vars[k].get() for k in sorted(getattr(self,'_payment_dirty',set()))},
             'items':[asdict(i) for i in self.contract.items]},ensure_ascii=False,sort_keys=True)
 
     def mark_saved(self):self._saved_state=self.card_state()
@@ -28,12 +29,15 @@ class Workflow:
             self.note.edit_modified(False);self.schedule_check()
 
     def tab_changed(self,event=None):
+        self.payment_tab_changed()
         self.update_check();self.schedule_preview()
 
     def schedule_preview(self):
         job=getattr(self,'_auto_job',None)
         if job:self.root.after_cancel(job)
         self._auto_job=None
+        if getattr(self,'payment_active',lambda:False)():
+            self.schedule_payment();return
         if not self.contract or not hasattr(self,'preview'):return
         if self.card_state()==getattr(self,'_preview_state',None):return
         self._auto_job=self.root.after(650,self.auto_preview)

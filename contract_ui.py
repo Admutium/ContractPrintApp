@@ -67,6 +67,12 @@ class Editing:
             notice=state.get('notice_snapshot')
             self._notice_snapshot=Notice(**{**notice,'items':[NoticeItem(**i) for i in notice.get('items',[])]}) if notice else None
             self._quantity_key=None
+            if getattr(self,'_payment_built',False):
+                self._payment_updating=True
+                try:
+                    self._payment_dirty=set(state.get('payment',{}))
+                    for key,value in state.get('payment',{}).items():self.payment_vars[key].set(value)
+                finally:self._payment_updating=False
             self.populate();self.controls();self.update_name();self.update_check()
         finally:self._restoring=False
         self.schedule_preview();self.status.set('Последнее изменение отменено.');return 'break'
