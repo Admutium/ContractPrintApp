@@ -6,9 +6,10 @@ import tempfile
 import time
 import socket
 import ssl
+import sys
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, build_opener, HTTPRedirectHandler
+from urllib.request import Request, build_opener, HTTPRedirectHandler, HTTPSHandler
 
 from updater import MAX_ARCHIVE, InstallLock, digest, version_tuple
 
@@ -50,7 +51,13 @@ def open_url(url,headers=None):
     request=Request(url,headers={'User-Agent':'ContractPrintApp-Updater',
                                  'Accept':'application/vnd.github+json' if url==API else '*/*',
                                  **(headers or {})})
-    return build_opener(GitHubRedirect()).open(request,timeout=20)
+    handlers = [GitHubRedirect()]
+    if sys.platform == 'win32':
+        import truststore
+        # Verify GitHub and its release asset host with the Windows certificate chain engine.
+        context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        handlers.append(HTTPSHandler(context=context))
+    return build_opener(*handlers).open(request,timeout=20)
 
 
 def read_json(url,limit,opener):

@@ -1,10 +1,10 @@
 """Execution-security payment data; never mix bid and warranty bank details."""
-from dataclasses import dataclass,field,asdict
+from dataclasses import dataclass,field
 from decimal import Decimal,ROUND_HALF_UP
 import re
-from core import clean,normalized_label,decimal
+from core import clean,normalized_label,decimal,extract_inn,table_fields
 
-MODES=('Из извещения','% от НМЦК','% от цены контракта','Своя сумма')
+MODES=('Из контракта / извещения','% от НМЦК','% от цены контракта','Своя сумма')
 PARTY_FIELDS=('name','inn','kpp','account','bank','bik','bank_account')
 
 @dataclass
@@ -100,6 +100,102 @@ def parse_security_rows(rows,source=''):
     return result
 
 
+def contract_section(root, number):
+    for heading in root.xpath('//p|//h2|//h3|//h4'):
+        if re.match(r'^'+re.escape(number)+r'(?:[.\s]|$)', clean(heading.text_content())):
+            return heading.getparent()
+    return None
+
+
+def section_records(section):
+    if section is None:
+        return []
+    records = []
+    headers = []
+    for row in section.xpath('.//tr[not(.//tr)]'):
+        cells = [clean(cell.text_content()) for cell in row.xpath('./td|./th')]
+        if not cells:
+            continue
+        if normalized_label(cells[0]).startswith(('наименование организации', 'вид обеспечения')):
+            headers = [normalized_label(cell) for cell in cells]
+        elif headers and len(cells) == len(headers) and not all(v.isdigit() for v in cells):
+            records.append(dict(zip(headers, cells)))
+    return records
+
+
+def apply_contract_sections(root, result):
+    customer = table_fields(contract_section(root, '2.1'))
+    if customer.get('полное наименование'):
+        result.recipient['name'] = customer['полное наименование']
+    if inn := extract_inn(customer):
+        result.recipient['inn'] = inn
+    if kpp := next((v for k,v in customer.items() if k.startswith('кпп') and re.fullmatch(r'\d{9}',v)), ''):
+        result.recipient['kpp'] = kpp
+
+    accounts = section_records(contract_section(root, '5.5'))
+    if accounts:
+        for key in ('account','bank','bik','bank_account'):
+            result.recipient.pop(key,None)
+        for key in ('personal','counterparty','account_type'):
+            result.extra.pop(key,None)
+        if len(accounts) == 1:
+            row = accounts[0]
+            bank = row.get('реквизиты банка, тофк','')
+            details = parse_bank(re.sub(r'(?i)бик\s*:', ' | БИК: ', bank))
+            # The bank name precedes BIK in the print form, sometimes without whitespace.
+            bank_name = re.split(r'бик\s*[:№]', bank, maxsplit=1, flags=re.I)[0].strip(' ,;')
+            account = row.get('номер банковского (казначейского) счета','')
+            for key,value in {'account':account,'bank':bank_name,'bik':details.get('bik'),
+                              'bank_account':details.get('bank_account')}.items():
+                if value:
+                    result.recipient[key] = value
+            identity = next(iter(row.values()),'')
+            ids = re.search(r'(?<!\d)(\d{10}|\d{12})\s*[/,]\s*(\d{9})(?!\d)', identity)
+            if not ids:
+                ids = re.search(r'ИНН\s*:?\s*(\d{10}|\d{12})\D{0,15}КПП\s*:?\s*(\d{9})',identity,re.I)
+            if ids and not result.recipient.get('inn'):
+                result.recipient['inn'] = ids[1]
+            if ids and ids[1] == result.recipient.get('inn'):
+                result.recipient.setdefault('kpp',ids[2])
+            for key,label in {'personal':'номер лицевого счета','counterparty':'наименование контрагента для п/п',
+                              'account_type':'тип счета'}.items():
+                if value := unique([row.get(label,'')]):
+                    result.extra[key] = value
+        else:
+            result.warnings.append('В пункте 5.5 несколько счетов. Укажите нужный счёт по контракту.')
+
+    for row in section_records(contract_section(root, '4.5')):
+        if normalized_label(row['вид обеспечения']) != 'обеспечение исполнения контракта':
+            continue
+        for key,value in row.items():
+            if not key.startswith('размер обеспечения') or not value:
+                continue
+            try:
+                number = decimal(re.sub(r'\s*(?:%|руб\.?|₽)$','',value,flags=re.I))
+            except ValueError:
+                continue
+            if number is not None:
+                if '%' in key:
+                    result.percent = str(number)
+                else:
+                    result.amount = str(number)
+        result.terms = row.get('порядок предоставления, требования к обеспечению','') or result.terms
+        if result.amount:
+            result.mode = MODES[0]
+        elif result.percent:
+            result.mode = parse_security_rows([
+                ('Обеспечение исполнения контракта','',True),
+                ('Размер обеспечения',result.percent+'%',False),
+                ('Порядок',result.terms,False)
+            ]).mode
+            if not result.mode:
+                result.warnings.append('Укажите базу расчёта процента из пункта 4.5.')
+        break
+    if result.recipient:
+        result.warnings = [w for w in result.warnings if not w.startswith('Реквизиты для обеспечения')]
+    return result
+
+
 def parse_payment_html(raw,source='HTML'):
     from lxml import html
     if len(raw)>20*1024*1024:raise ValueError('HTML больше 20 МБ.')
@@ -127,10 +223,12 @@ def parse_payment_html(raw,source='HTML'):
         for row in parent.xpath('.//tr[not(.//tr)]'):
             cells=row.xpath('./td|./th')
             if len(cells)>1:fields[normalized_label(cells[0].text_content())]=clean(' '.join(c.text_content() for c in cells[1:]))
-        result.payer=parse_bank(' | '.join(k+': '+v for k,v in fields.items()))
+        result.payer={}
         name=fields.get('полное наименование') or fields.get('фио физического лица')
         if name:result.payer['name']=name
         break
+    if contract_section(root,'2.1') is not None or contract_section(root,'5.5') is not None:
+        apply_contract_sections(root,result)
     return result
 
 
@@ -169,24 +267,24 @@ def amount_words(value):
 
 def validate(data):
     problems=[]
-    for side,title in (('payer','плательщика'),('recipient','получателя')):
-        for key,label in (('name','полное наименование'),('inn','ИНН'),('account','счёт'),('bank','банк'),('bik','БИК'),('bank_account','корреспондентский / единый казначейский счёт')):
-            value=data.get(side+'_'+key,'').strip()
-            if not value:problems.append('Не заполнено: '+label+' '+title)
-            elif key in ('inn','account','bik','bank_account'):
-                valid={'inn':(10,12),'account':(20,),'bik':(9,),'bank_account':(20,)}[key]
-                if not value.isdigit() or len(value) not in valid:problems.append('Неверный формат: '+label+' '+title)
-        kpp=data.get(side+'_kpp','')
-        if len(data.get(side+'_inn',''))==10 and not kpp:problems.append('Не заполнен КПП '+title)
-        if kpp and not re.fullmatch(r'\d{9}',kpp):problems.append('КПП '+title+' должен содержать 9 цифр')
-    if not data.get('purpose','').strip():problems.append('Не заполнено назначение платежа')
+    for key,label in (('payer_name','полное название плательщика'),
+                      ('recipient_name','полное название ЛПУ'),
+                      ('recipient_inn','ИНН ЛПУ')):
+        if not data.get(key,'').strip():
+            problems.append('Не заполнено: '+label)
+    for key,label,lengths in (
+        ('recipient_inn','ИНН ЛПУ',(10,12)), ('recipient_kpp','КПП ЛПУ',(9,)),
+        ('recipient_account','банковский / казначейский счёт',(20,)),
+        ('recipient_bik','БИК',(9,)), ('recipient_bank_account','корреспондентский счёт / ЕКС',(20,))
+    ):
+        value=data.get(key,'')
+        if value and (not value.isdigit() or len(value) not in lengths):
+            problems.append('Неверный формат: '+label)
     try:
-        if Decimal(data.get('amount','0'))<=0:problems.append('Сумма обеспечения должна быть больше нуля')
-    except Exception:problems.append('Не определена сумма обеспечения')
-    from datetime import datetime
-    try:datetime.strptime(data.get('date',''),'%d.%m.%Y')
-    except ValueError:problems.append('Дата поручения должна быть в формате ДД.ММ.ГГГГ')
-    if not re.fullmatch(r'\d{1,6}',data.get('number','')):problems.append('Номер поручения: от 1 до 6 цифр')
+        if Decimal(data.get('amount','0'))<=0:
+            problems.append('Укажите сумму обеспечения больше нуля')
+    except ArithmeticError:
+        problems.append('Не определена сумма обеспечения')
     for key,lengths in (('kbk',(20,)),('oktmo',(8,11)),('uin',(1,20,25))):
         v=data.get(key,'')
         if v and (not v.isdigit() or len(v) not in lengths):problems.append('Неверный формат поля '+key.upper())

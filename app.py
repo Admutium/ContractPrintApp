@@ -1,4 +1,4 @@
-"""ContractPrintApp 1.14.0 - desktop UI, no contract persistence."""
+"""ContractPrintApp 1.14.1 - desktop UI, no contract persistence."""
 import copy, json, os, sys, tempfile, threading, queue
 from pathlib import Path
 from datetime import datetime
@@ -20,7 +20,7 @@ DELIVERY_MODES=('От подписания до даты','Дней от под�
 
 class Application(PaymentUI,AutoEIS,UpdateUI,QuantityPanel,Editing,Workflow,Preview,Features):
     def __init__(self,root):
-        self.root=root;root.title('ContractPrintApp 1.14.0 · Карточка контракта');root.geometry(f'{min(1240,root.winfo_screenwidth()-40)}x{min(820,root.winfo_screenheight()-80)}');root.minsize(1100,650)
+        self.root=root;root.title('ContractPrintApp 1.14.1 · Карточка контракта');root.geometry(f'{min(1240,root.winfo_screenwidth()-40)}x{min(820,root.winfo_screenheight()-80)}');root.minsize(1100,650)
         self.contract=None;self.temp=None;self.pdf=None;self.outputs=None;self.page=0;self.zoom=1.;self.busy=False;self.events=queue.Queue()
         from app_paths import settings_path
         self.settings_path=settings_path()
@@ -526,7 +526,7 @@ class Application(PaymentUI,AutoEIS,UpdateUI,QuantityPanel,Editing,Workflow,Prev
         if not folder.is_dir():raise ValueError('Папка сохранения недоступна.')
         return folder/filename(self.file_name.get())
     def save(self):
-        if self.payment_active():return self.save_payment()
+        if PaymentUI.payment_active(self):return self.save_payment()
         from pdf_export import atomic_copy
         if not self.need():return
         try:
@@ -639,9 +639,8 @@ def self_test(output):
             if len(app.pdf)!=2:raise RuntimeError('Unexpected PDF page count')
             if app._payment_built or app._payment_temp is not None:raise RuntimeError('Payment was generated before opening the tab')
             app.book.select(app.payment_tab);root.update()
-            values={'mode':'Своя сумма','custom':'100','number':'1'}
-            for party in ('payer','recipient'):
-                values.update({party+'_'+k:v for k,v in {'name':'Демонстрационная организация','inn':'0'*10,'kpp':'0'*9,'account':'0'*20,'bank':'Демонстрационный банк','bik':'0'*9,'bank_account':'0'*20}.items()})
+            values={'mode':'Своя сумма','custom':'100','payer_name':'Демонстрационная организация',
+                    'recipient_name':'Демонстрационное ЛПУ','recipient_inn':'0'*10}
             for key,value in values.items():app.payment_vars[key].set(value)
             app.render_payment()
             if app._payment_temp is None or app._payment_render_key is None:raise RuntimeError('Payment preview failed: '+app.payment_preview_info.get())

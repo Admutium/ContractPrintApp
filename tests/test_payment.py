@@ -30,8 +30,33 @@ class PaymentTests(unittest.TestCase):
         self.assertEqual(data.recipient['account'],'2'*20)
         self.assertEqual(data.mode,MODES[2]);self.assertEqual(data.percent,'5')
         self.assertIn('Полное демонстрационное',data.payer['name'])
-        self.assertEqual(data.payer['inn'],'0'*10)
-        self.assertEqual(data.payer['bank'],'АО Банк Пример')
+        self.assertEqual(set(data.payer),{'name'})
+
+    def test_contract_uses_customer_and_tabular_sections_45_and_55(self):
+        def section(heading_text, rows):
+            return '<div><p>'+heading_text+'</p><table>'+''.join(
+                '<tr>'+''.join('<td>'+cell+'</td>' for cell in row)+'</tr>' for row in rows
+            )+'</table></div>'
+
+        customer=section('2.1. Заказчик', [
+            ['Полное наименование','Демонстрационное ЛПУ'], ['ИНН','1'*10], ['КПП','2'*9]
+        ])
+        terms=section('4.5. Обеспечение исполнения контракта', [
+            ['Вид обеспечения','Размер обеспечения исполнения контракта в %','Размер обеспечения исполнения контракта'],
+            ['1','2','3'], ['Обеспечение исполнения контракта','5,5','12345,67'],
+            ['Обеспечение исполнения гарантийных обязательств','10','2222'],
+        ])
+        columns=['Наименование организации, ИНН, КПП','Тип счета','Номер лицевого счета',
+                 'Номер банковского (казначейского) счета','Реквизиты банка, ТОФК','Наименование контрагента для п/п']
+        account=['Демонстрационное ЛПУ','Лицевой счёт в ФК','ДЕМО123',
+                 '3'*20,'Банк ПримерБИК: '+'4'*9+', к/с: '+'5'*20,'УФК (ЛПУ)']
+        payment=section('5.5. Платежные реквизиты заказчика', [columns,list('123456'),account])
+        unrelated=section('5.6. Реквизиты для оплаты', [columns,['Иной получатель',*account[1:3],'9'*20,*account[4:]]])
+        source=parse_payment_html(('<meta charset="utf-8">'+customer+terms+payment+unrelated).encode())
+        self.assertEqual(source.recipient,{'name':'Демонстрационное ЛПУ','inn':'1'*10,'kpp':'2'*9,
+                                          'account':'3'*20,'bank':'Банк Пример','bik':'4'*9,'bank_account':'5'*20})
+        self.assertEqual(source.extra,{'personal':'ДЕМО123','counterparty':'УФК (ЛПУ)','account_type':'Лицевой счёт в ФК'})
+        self.assertEqual((source.mode,source.percent,source.amount),(MODES[0],'5.5','12345.67'))
 
     def test_nmck_fixed_ambiguous_and_no_requisites(self):
         self.assertEqual(parse_payment_html(demo_html('5% от НМЦК')).mode,MODES[1])
@@ -68,11 +93,12 @@ class PaymentTests(unittest.TestCase):
             with fitz.open(path) as doc:
                 text=doc[0].get_text()
                 self.assertEqual(len(doc),1)
-                for token in ('Демонстрационная','организация','наименованием','Обеспечение исполнения','0401060'):
+                for token in ('Демонстрационная','организация','наименованием','Обеспечение исполнения','Внутренний документ для бухгалтерии'):
                     self.assertIn(token,text)
-                self.assertNotIn('ЧЕРНОВИК',text)
+                for token in ('ЧЕРНОВИК','Подписи','Отметки банка','Поступ. в банк','Списано со сч.','М. П.'):
+                    self.assertNotIn(token,text)
                 self.assertTrue(all(doc[0].rect.contains(fitz.Rect(word[:4])) for word in doc[0].get_text('words')))
             generate_payment(data,path,draft=True)
             with fitz.open(path) as doc:self.assertIn('ЧЕРНОВИК',doc[0].get_text())
             data['payer_name']='Очень длинное название '*100
-            with self.assertRaisesRegex(ValueError,'слишком длинное'):generate_payment(data,path)
+            with self.assertRaisesRegex(ValueError,'длинное поле'):generate_payment(data,path)

@@ -1,7 +1,6 @@
 """Lazy execution-security tab and a separate one-page preview/export path."""
 import tempfile,threading
 from pathlib import Path
-from datetime import datetime
 import tkinter as tk
 from tkinter import ttk
 from dialogs import messagebox,filedialog,new_dialog
@@ -67,20 +66,19 @@ class PaymentUI:
         self.payment_amount=tk.StringVar(value='Сумма не определена')
         ttk.Label(body,textvariable=self.payment_amount,wraplength=440,font=('Segoe UI',11,'bold')).grid(row=row,columnspan=2,sticky='w',pady=7);row+=1
         section('Плательщик — наша организация')
-        for key in PARTY_FIELDS:field('payer_'+key,LABELS[key])
+        field('payer_name',LABELS['name'])
         section('Получатель обеспечения исполнения')
         for key in PARTY_FIELDS:field('recipient_'+key,LABELS[key])
         section('Платёжное поручение')
-        for key,label in (('number','Номер поручения'),('date','Дата (ДД.ММ.ГГГГ)'),('payment_type','Вид платежа'),('priority','Очередность'),('purpose','Назначение платежа')):field(key,label)
+        field('purpose','Назначение платежа')
         ttk.Label(body,text='Длинные названия и назначение печатаются целиком, с переносом строк.',wraplength=440).grid(row=row,columnspan=2,sticky='w',pady=6);row+=1
         section('Дополнительные реквизиты — при необходимости')
-        for key,label in (('personal','Лицевой счёт'),('kbk','КБК'),('oktmo','ОКТМО'),('uin','УИН'),('status','Статус (101)'),('tax_basis','Основание (106)'),('tax_period','Период (107)'),('tax_number','Номер документа (108)'),('tax_date','Дата документа (109)'),('tax_type','Тип платежа (110)')):field(key,label)
+        for key,label in (('account_type','Тип счёта'),('personal','Лицевой счёт'),('counterparty','Контрагент для п/п'),('kbk','КБК'),('oktmo','ОКТМО'),('uin','УИН'),('status','Статус (101)'),('tax_basis','Основание (106)'),('tax_period','Период (107)'),('tax_number','Номер документа (108)'),('tax_date','Дата документа (109)'),('tax_type','Тип платежа (110)')):field(key,label)
         buttons=ttk.Frame(body);buttons.grid(row=row,columnspan=2,sticky='ew',pady=12)
         ttk.Button(buttons,text='Сохранить PDF',command=self.save_payment).pack(side='left')
         ttk.Button(buttons,text='Печать',command=self.print_payment).pack(side='left',padx=6)
         self.payment_overlay=ttk.Frame(self.preview,padding=8)
-        ttk.Label(self.payment_overlay,text='Платёжное поручение · 1 страница A4',font=('Segoe UI',11,'bold')).pack(anchor='w')
-        ttk.Label(self.payment_overlay,text='Обеспечение исполнения контракта',padding=(0,4)).pack(anchor='w')
+        ttk.Label(self.payment_overlay,text='Документ для бухгалтерии · A4',font=('Segoe UI',11,'bold')).pack(anchor='w')
         self.payment_preview_info=tk.StringVar(value='')
         ttk.Label(self.payment_overlay,textvariable=self.payment_preview_info,wraplength=460).pack(fill='x')
         frame=ttk.Frame(self.payment_overlay);frame.pack(fill='both',expand=True,pady=7)
@@ -118,25 +116,18 @@ class PaymentUI:
         if notice and notice.number==self.v['notice'].get().strip() and notice.payment:
             eis=PaymentSource(**notice.payment)
         else:eis=PaymentSource()
-        # Contract security conditions take precedence; notice supplies absent fields.
-        active=source if source.terms else eis
-        conflicts=any(source.recipient.get(k) and eis.recipient.get(k) and source.recipient[k]!=eis.recipient[k] for k in ('account','bank_account','bik','inn'))
+        active=source if source.amount or source.percent or source.terms else eis
         defaults={key:'' for key in self.payment_vars}
-        for party in ('payer','recipient'):
-            values={**getattr(eis,party),**getattr(source,party)}
-            if party=='recipient' and conflicts:values=dict(source.recipient)
-            if party=='payer' and self.v['inn'].get().strip()!=self.contract.inn:
-                values={}
-            defaults.update({party+'_'+key:values.get(key,'') for key in PARTY_FIELDS})
-        # Never substitute the short code for the full payer name.
-        defaults['payer_name']=self.v['supplier_full'].get().strip() or source.payer.get('name','')
-        defaults['payer_inn']=self.v['inn'].get().strip() or source.payer.get('inn','')
-        defaults.update({key:eis.extra.get(key,'') for key in ('personal','kbk','oktmo','uin')})
+        defaults.update({'recipient_'+key:source.recipient.get(key,'') for key in PARTY_FIELDS})
+        defaults['recipient_name']=self.v['customer_full'].get().strip() or defaults['recipient_name']
+        defaults['recipient_inn']=self.contract.customer_inn or defaults['recipient_inn']
+        defaults['payer_name']=self.v['supplier_full'].get().strip()
+        if not defaults['payer_name'] and self.v['inn'].get().strip()==self.contract.inn:
+            defaults['payer_name']=source.payer.get('name','')
         defaults.update(source.extra)
-        defaults.update(mode=active.mode,percent=active.percent,notice_amount=source.amount or eis.amount,
-                        date=datetime.now().strftime('%d.%m.%Y'),priority='5')
+        defaults.update(mode=active.mode,percent=active.percent,notice_amount=active.amount)
         contract_number=self.v['number'].get().strip();notice_number=self.v['notice'].get().strip()
-        defaults['purpose']=active.purpose or ('Обеспечение исполнения контракта'+(' № '+contract_number if contract_number else '')+
+        defaults['purpose']=source.purpose or ('Обеспечение исполнения контракта'+(' № '+contract_number if contract_number else '')+
             ('; извещение № '+notice_number if notice_number else '')+'; без НДС.')
         self._payment_updating=True
         try:
@@ -144,7 +135,6 @@ class PaymentUI:
                 if key not in self._payment_dirty:self.payment_vars[key].set(value)
         finally:self._payment_updating=False
         self._payment_warnings=list(dict.fromkeys(source.warnings+eis.warnings))
-        if conflicts:self._payment_warnings.append('Реквизиты HTML контракта отличаются от извещения. Использованы только реквизиты контракта; сверьте получателя.')
         self._payment_origin=active.source or 'HTML: условия обеспечения не найдены'
 
     def payment_data(self):
@@ -155,6 +145,9 @@ class PaymentUI:
                 contract_total=self.v['total'].get(),nmck=self.v['nmck'].get(),custom=data['custom'])
             data['amount']=str(amount)
         except ValueError as exc:data['amount']='0';error=str(exc)
+        if data['mode'] in MODES[1:3]:
+            data['rate_basis']=data['mode'].removeprefix('% от ')
+        data['contract_number']=self.v['number'].get().strip()
         if data.get('personal'):
             data['purpose']+=(' Лицевой счёт '+data['personal']+'.') if data['personal'] not in data['purpose'] else ''
         problems=validate(data)
@@ -193,7 +186,7 @@ class PaymentUI:
             self._payment_image=ImageTk.PhotoImage(Image.frombytes('RGB',(pix.width,pix.height),pix.samples))
             self.payment_canvas.delete('all');self.payment_canvas.create_image(max(12,(w-pix.width)//2),12,anchor='nw',image=self._payment_image)
             self.payment_canvas.configure(scrollregion=(0,0,max(w,pix.width+24),pix.height+24))
-            self.payment_preview_info.set('ЧЕРНОВИК · проверьте замечания слева' if draft else 'Реквизиты заполнены · перед оплатой сверьте с исходным документом')
+            self.payment_preview_info.set('ЧЕРНОВИК · проверьте замечания слева' if draft else 'Документ для передачи в бухгалтерию')
         except Exception as error:
             # Never leave a stale, valid-looking document after an invalid edit.
             self._payment_render_key=None;self.payment_canvas.delete('all')
@@ -214,9 +207,10 @@ class PaymentUI:
         try:
             path=self.prepare_payment()
             if path is None:return
+            import re
             from core import filename
             dest=filedialog.asksaveasfilename(parent=self.root,title='Сохранить платёжное поручение',
-                initialdir=self.folder.get(),initialfile=filename('Платёжное поручение '+self.v['number'].get()),defaultextension='.pdf',filetypes=[('PDF','*.pdf')])
+                initialdir=self.folder.get(),initialfile=filename('Обеспечение исполнения '+re.sub(r'[<>:"/\\|?*]','_',self.v['number'].get())[:100].rstrip(' .')),defaultextension='.pdf',filetypes=[('PDF','*.pdf')])
             if not dest:return
             from pdf_export import atomic_copy
             atomic_copy(path,Path(dest));self.status.set('Платёжное поручение сохранено: '+dest)
