@@ -145,6 +145,7 @@ class PaymentUI:
         if data['mode'] in MODES[1:3]:
             data['rate_basis']=data['mode'].removeprefix('% от ')
         data['contract_number']=self.v['number'].get().strip()
+        data['subject']=self.v['subject'].get().strip()
         problems=validate(data)
         if error:problems.insert(0,error)
         if not self.contract:problems.insert(0,'Загрузите HTML контракта')

@@ -88,12 +88,13 @@ class PaymentTests(unittest.TestCase):
 
     def test_one_page_complete_names_and_draft(self):
         data=valid_data()
+        data['subject']='Демонстрационный предмет контракта'
         with tempfile.TemporaryDirectory() as tmp:
             path=generate_payment(data,Path(tmp)/'payment.pdf')
             with fitz.open(path) as doc:
                 text=doc[0].get_text()
                 self.assertEqual(len(doc),1)
-                for token in ('Демонстрационная','организация','наименованием','Платёжное поручение на обеспечение исполнения контракта',data['purpose']):
+                for token in ('Демонстрационная','организация','наименованием','Платёжное поручение на обеспечение исполнения контракта','Предмет контракта',data['subject'],data['purpose']):
                     self.assertIn(token,' '.join(text.split()))
                 for token in ('ЧЕРНОВИК','Подписи','Отметки банка','Поступ. в банк','Списано со сч.','М. П.','Внутренний документ для бухгалтерии'):
                     self.assertNotIn(token,text)

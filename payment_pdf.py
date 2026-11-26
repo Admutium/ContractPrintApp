@@ -50,6 +50,7 @@ def generate_payment(data, path, draft=False):
             rate += ' от ' + data['rate_basis']
     content += section('Платёж', [
         ('Контракт',data.get('contract_number')),
+        ('Предмет контракта',data.get('subject')),
         ('Плательщик',data.get('payer_name')),
         ('Размер обеспечения',money(str(amount))+' руб.' if amount else ''),
         ('Процент обеспечения',rate),
@@ -70,7 +71,7 @@ def generate_payment(data, path, draft=False):
             ('Период (107)',data.get('tax_period')), ('Номер документа (108)',data.get('tax_number')),
             ('Дата документа (109)',data.get('tax_date')), ('Тип платежа (110)',data.get('tax_type')),
     ])
-    if any(len(str(value)) > 1800 for value in data.values()):
+    if any(len(str(value)) > 1800 for key, value in data.items() if key != 'subject'):
         raise ValueError('Сократите длинное поле, чтобы документ поместился на одной странице.')
     doc.build([KeepInFrame(doc.width-12, doc.height-12, content, mode='shrink')])
     return path
