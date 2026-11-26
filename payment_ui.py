@@ -10,7 +10,7 @@ LABELS={'name':'Полное наименование','inn':'ИНН','kpp':'К�
 
 class PaymentUI:
     def init_payment(self):
-        self.payment_tab=ttk.Frame(self.book);self.book.add(self.payment_tab,text='Платёжное поручение');self.book.insert(1,self.payment_tab)
+        self.payment_tab=ttk.Frame(self.book);self.book.add(self.payment_tab,text='Платёжное поручение')
         self._payment_built=False;self._payment_job=None;self._payment_temp=None
         self._payment_source_path=None;self._payment_raw=None;self._payment_identity=None
         self._payment_dirty=set();self._payment_updating=False;self._payment_render_key=None
@@ -126,9 +126,6 @@ class PaymentUI:
             defaults['payer_name']=source.payer.get('name','')
         defaults.update(source.extra)
         defaults.update(mode=active.mode,percent=active.percent,notice_amount=active.amount)
-        contract_number=self.v['number'].get().strip();notice_number=self.v['notice'].get().strip()
-        defaults['purpose']=source.purpose or ('Обеспечение исполнения контракта'+(' № '+contract_number if contract_number else '')+
-            ('; извещение № '+notice_number if notice_number else '')+'; без НДС.')
         self._payment_updating=True
         try:
             for key,value in defaults.items():
@@ -148,8 +145,6 @@ class PaymentUI:
         if data['mode'] in MODES[1:3]:
             data['rate_basis']=data['mode'].removeprefix('% от ')
         data['contract_number']=self.v['number'].get().strip()
-        if data.get('personal'):
-            data['purpose']+=(' Лицевой счёт '+data['personal']+'.') if data['personal'] not in data['purpose'] else ''
         problems=validate(data)
         if error:problems.insert(0,error)
         if not self.contract:problems.insert(0,'Загрузите HTML контракта')

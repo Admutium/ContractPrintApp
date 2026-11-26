@@ -1,4 +1,4 @@
-# ContractPrintApp 1.14.1
+# ContractPrintApp 1.14.2
 
 Приложение для создания карточки контракта, формирования PDF и печати.
 
@@ -11,7 +11,7 @@
 5.5 и размер обеспечения с процентом. Предпросмотр создаётся при открытии
 вкладки. Документ можно сохранить и напечатать на одном листе A4.
 
-[Скачать готовую программу для Windows](https://github.com/Admutium/ContractPrintApp/releases/download/v1.14.1/ContractPrintApp-1.14.1-windows.zip)
+[Скачать готовую программу для Windows](https://github.com/Admutium/ContractPrintApp/releases/download/v1.14.2/ContractPrintApp-1.14.2-windows.zip)
 — распакуйте архив в отдельную папку и запустите `ContractPrintApp.exe`.
 Python для запуска готовой программы не требуется.
 
@@ -21,11 +21,11 @@ Python для запуска готовой программы не требуе
 установку. Прерванную загрузку можно продолжить повторной проверкой.
 Команда «Настройки → Проверить обновления» запускает проверку вручную.
 
-[Комплект для проверки автообновления](https://github.com/Admutium/ContractPrintApp/releases/download/v1.14.1/ContractPrintApp-1.14.1-update-kit.zip)
+[Комплект для проверки автообновления](https://github.com/Admutium/ContractPrintApp/releases/download/v1.14.2/ContractPrintApp-1.14.2-update-kit.zip)
 — распакуйте в отдельную папку обновлений, затем выберите её в настройках
 установленной программы. Подробности: `ОБНОВЛЕНИЯ_App.md`.
 
-[Значок ICO](https://github.com/Admutium/ContractPrintApp/releases/download/v1.14.1/ContractPrintApp.ico).
+[Значок ICO](https://github.com/Admutium/ContractPrintApp/releases/download/v1.14.2/ContractPrintApp.ico).
 
 При первом запуске справочник организаций пуст. Добавьте свои организации
 в «Настройки → Справочник организаций»: код, ИНН и название. После этого

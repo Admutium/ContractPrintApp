@@ -14,9 +14,10 @@ from pdf_export import A4, ST
 
 def generate_payment(data, path, draft=False):
     path = Path(path)
+    title = 'Платёжное поручение на обеспечение исполнения контракта'
     doc = SimpleDocTemplate(str(path), pagesize=A4, leftMargin=36, rightMargin=36,
                             topMargin=35, bottomMargin=35,
-                            title='Обеспечение исполнения контракта')
+                            title=title)
     body = ParagraphStyle('AccountingBody', parent=ST['body'], fontSize=10, leading=14)
     label = ParagraphStyle('AccountingLabel', parent=ST['label'], fontSize=9, leading=12)
 
@@ -24,7 +25,7 @@ def generate_payment(data, path, draft=False):
         return Paragraph(escape(str(value or '')).replace('\n', '<br/>'), style)
 
     def section(title, rows):
-        cells = [[paragraph(name, label), paragraph(value)] for name, value in rows if value]
+        cells = [[paragraph(name, label), paragraph(value)] for name, value in rows if value or name == 'Назначение платежа']
         if not cells:
             return []
         table = Table(cells, colWidths=[158, doc.width-170], hAlign='LEFT')
@@ -39,8 +40,7 @@ def generate_payment(data, path, draft=False):
     amount = Decimal(data.get('amount','0') or '0')
     if amount < 0:
         raise ValueError('Сумма не может быть отрицательной.')
-    content = [paragraph('Обеспечение исполнения контракта', ST['title']),
-               paragraph('Внутренний документ для бухгалтерии'), Spacer(1,10)]
+    content = [paragraph(title, ST['title']), Spacer(1,10)]
     if draft:
         content.extend([paragraph('ЧЕРНОВИК', ST['sub']), Spacer(1,8)])
     rate = data.get('percent','').replace('.',',')

@@ -93,11 +93,16 @@ class PaymentTests(unittest.TestCase):
             with fitz.open(path) as doc:
                 text=doc[0].get_text()
                 self.assertEqual(len(doc),1)
-                for token in ('Демонстрационная','организация','наименованием','Обеспечение исполнения','Внутренний документ для бухгалтерии'):
-                    self.assertIn(token,text)
-                for token in ('ЧЕРНОВИК','Подписи','Отметки банка','Поступ. в банк','Списано со сч.','М. П.'):
+                for token in ('Демонстрационная','организация','наименованием','Платёжное поручение на обеспечение исполнения контракта',data['purpose']):
+                    self.assertIn(token,' '.join(text.split()))
+                for token in ('ЧЕРНОВИК','Подписи','Отметки банка','Поступ. в банк','Списано со сч.','М. П.','Внутренний документ для бухгалтерии'):
                     self.assertNotIn(token,text)
                 self.assertTrue(all(doc[0].rect.contains(fitz.Rect(word[:4])) for word in doc[0].get_text('words')))
+            data['purpose']=''
+            generate_payment(data,path)
+            with fitz.open(path) as doc:
+                self.assertIn('Назначение платежа',doc[0].get_text())
+                self.assertNotIn('без НДС',doc[0].get_text())
             generate_payment(data,path,draft=True)
             with fitz.open(path) as doc:self.assertIn('ЧЕРНОВИК',doc[0].get_text())
             data['payer_name']='Очень длинное название '*100
